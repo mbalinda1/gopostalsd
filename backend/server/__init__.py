@@ -1,14 +1,11 @@
 # Import required Flask extensions and modules
 from flask import Flask
-from flask_sqlalchemy import SQLAlchemy
-from flask_migrate import Migrate
 from flask_restx import Api
 from flask_cors import CORS
 from server.config import DevelopmentConfig, TestingConfig, ProductionConfig
+from server.config import database, migrate
+from server.models import * # So that they can be detected by migrations
 
-# Initialize Flask extensions
-database = SQLAlchemy()
-migrate = Migrate()
 
 # Configure Swagger UI documentation
 swagger = Api(

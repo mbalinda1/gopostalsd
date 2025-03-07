@@ -1,5 +1,7 @@
-from server.controllers.user_controller import UserController, UserSuccesses, UserErrors, Result
-from server.models.user import User, Role, Address
+
+from server.controllers import Result
+from server.controllers.user_controller import UserController, UserSuccesses, UserErrors
+from server.models import User, Role, Address
 from server import database as db
 
 

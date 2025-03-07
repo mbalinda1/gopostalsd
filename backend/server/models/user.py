@@ -1,6 +1,4 @@
-from server import database as db
-from datetime import datetime, timezone
-
+from server.config import database as db
 
 class User(db.Model):
     __tablename__ = 'users'

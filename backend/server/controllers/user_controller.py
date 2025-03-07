@@ -1,6 +1,6 @@
 
 from enum import Enum
-from server import database as db
+from server.config import database as db
 from server.models.user import User, Role, Address
 from server.controllers.common import Result
 

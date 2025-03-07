@@ -3,6 +3,6 @@ import warnings
 
 # Suppress warning
 warnings.filterwarnings("ignore", category=DeprecationWarning, module='flask_restx')
-server = create_server()
+app = create_server()
 if __name__ == "__main__":
-    server.run(debug=True)
+    app.run(debug=True)

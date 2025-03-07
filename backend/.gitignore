@@ -35,10 +35,10 @@ htmlcov/
 *.log
 logs/
 
-# React - Frontend (Node.js)
-frontend/node_modules/
-frontend/build/
-frontend/.env
+# Migrattions
+migrations/versions/*.pyc
+migrations/versions/__pycache__/ 
+
 
 # VSCode settings
 .vscode/

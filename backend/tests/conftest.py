@@ -6,16 +6,16 @@ from server import create_server, database as db
 @pytest.fixture
 def app():
     # Create a Flask application instance in testing mode
-    test_server = create_server("testing")
+    test_app = create_server("testing")
     # Set up the application context
-    with test_server.app_context():
+    with test_app.app_context():
 
         print("TABLES")
         for table in db.metadata.tables.keys():
             print(table)
 
         db.create_all()       # Create tables before tests run
-        yield test_server     # This makes the app available to tests
+        yield test_app        # This makes the app available to tests
         db.drop_all()         # Drop tables after tests complete
 
 # Define the client fixture that depends on the app fixture
