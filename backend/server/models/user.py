@@ -6,7 +6,7 @@ class User(db.Model):
     id = db.Column(db.Integer,primary_key=True )
     first_name = db.Column(db.String(60), nullable=False)
     last_name = db.Column(db.String(60), nullable=False)
-    email_address = db.Column(db.String(120), unique=True, nullable=False)
+    email_address = db.Column(db.String(120), unique=True, nullable=False, index=True)
     creation_date = db.Column(db.DateTime(timezone=True), default=db.func.now(), nullable=False)
 
     # Foreign key for addresses
