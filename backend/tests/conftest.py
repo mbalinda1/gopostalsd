@@ -1,5 +1,6 @@
 import pytest
-from server import create_server, database as db
+from server.config import database as db
+from server import create_server
 
 
 # Define the app fixture required by pytest-flask

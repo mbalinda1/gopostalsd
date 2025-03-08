@@ -165,6 +165,9 @@ def test_delete_user_success(client):
 
     UserController.create_user(user_data)
     result = UserController.delete_user(user_data["email_address"])
+    print(result.data)
+    print(result.status)
+    print(result.error)
 
     assert isinstance(result, Result)
     assert result.status is True

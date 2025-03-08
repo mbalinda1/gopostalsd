@@ -3,6 +3,7 @@ from enum import Enum
 from server.config import database as db
 from server.models.user import User, Role, Address
 from server.controllers.common import Result
+import re
 
 class UserErrors(Enum):
     FAILED_TO_GET_ALL_USERS = "Failed to get all users!"
@@ -19,7 +20,7 @@ class UserSuccesses(Enum):
 class UserController:
 
     @staticmethod
-    def get_all_users():
+    def get_all_users() -> Result:
         result = Result()
         data = User.query.all()
 
@@ -32,7 +33,7 @@ class UserController:
         return result
     
     @staticmethod
-    def create_user(data: dict):
+    def create_user(data: dict) -> Result:
         result = Result()
         
         # Extract user fields from input data
@@ -93,7 +94,32 @@ class UserController:
 
         return result
 
+    @staticmethod
+    def delete_user(email_address: str) -> Result:
+        result = Result()
 
+        # Check if email address is valid using regex
+        email_address_regex = r'^[\w\.-]+@[\w\.-]+\.[a-zA-Z]{2,}$'
+        if not re.match(email_address_regex, email_address):
+            result.status = False
+            result.error = UserErrors.INVALID_EMAIL_ADDRESS
+            return result
+        
+        # Check if user already exists
+        user = User.query.filter_by(email_address=email_address).first()
+        if not user:
+            result.status = False
+            result.error = UserErrors.USER_NOT_FOUND
+            return result
+        
+        # Delete user
+        db.session.delete(user)
+        db.session.commit()
+
+        result.status = True
+        result.data = UserSuccesses.USER_DELETED_SECCESSFULLY
+        result.error = None
+        return result
 
 
 
