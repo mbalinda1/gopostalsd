@@ -37,14 +37,16 @@ class PrintProductController:
     def get_enabled_product_categories() -> Result:
         """Retrieve only enabled categories."""
         
-        result = Result
+        result = Result()
         categories = PrintProductCategory.query.filter_by(enabled=True).all()
 
         if categories:
-            result.data = [category.to_dict for category in categories]
+            result.data = [category.to_dict() for category in categories]
         else:
             result.status = False
             result.error = PrintProductErrors.FAILED_TO_FETCH_ENABLED_PRINT_PRODUCT_CATEGORIES.value
+
+        return result
 
     @staticmethod
     def update_print_product_category_status(category_id: int, enabled: bool):
@@ -67,7 +69,7 @@ class PrintProductController:
         """Sync categories from Sinalite API (manual trigger)."""
         result =  Result
         sinalite_categories = sinalite.get_product_categories()
-        existing_categories = [category.name for category in [category_instance.to_dict for category_instance in PrintProductCategory.query.all()]]
+        existing_categories = [category.name for category in [category_instance.to_dict() for category_instance in PrintProductCategory.query.all()]]
         new_categories = [PrintProductCategory(name=name) for name in sinalite_categories if name not in existing_categories]
 
         if new_categories:
