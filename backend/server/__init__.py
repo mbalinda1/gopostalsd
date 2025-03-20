@@ -1,19 +1,10 @@
 # Import required Flask extensions and modules
 from flask import Flask
-from flask_restx import Api
 from flask_cors import CORS
 from server.config import DevelopmentConfig, TestingConfig, ProductionConfig
-from server.config import database, migrate, sinalite
+from server.config import database, migrate, sinalite, swagger
 from server.models import * # So that they can be detected by migrations
 
-
-# Configure Swagger UI documentation
-swagger = Api(
-    title = "Go Postal API",
-    version = "1.0",
-    description = "API documentation for Go Postal",
-    doc = "/docs"
-)
 
 def create_server(config="development"):
     """
@@ -38,15 +29,20 @@ def create_server(config="development"):
     else:  # Default to development configuration
         server.config.from_object(DevelopmentConfig)
 
-    # Initialize database and migration support
+    # Initialize database support
     database.init_app(server)
+
+    # Initialize database support
     migrate.init_app(server, database)
 
-    # Initialize sinalite adapter
+    # Initialize sinalite api support
     sinalite.init_app(server)
 
+    # Initialize swagger documentation
+    swagger.init_app(server)
+
     # Register API routes
-    #from server.routes import register_routes
-    #register_routes(server)
+    from server.routes import register_routes
+    register_routes(server)
 
     return server

@@ -1,6 +1,7 @@
 import os
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
+from flask_restx import Api
 from server.thirdparty import SinaliteAdapter as Sinalite
 from dotenv import load_dotenv
 from server.logging import configure_logging
@@ -9,6 +10,15 @@ from server.logging import configure_logging
 database = SQLAlchemy()
 migrate = Migrate()
 sinalite = Sinalite() # Implemented in house
+
+# Configure Swagger UI documentation
+swagger = Api(
+    title="Go Postal SD API",
+    version="1.0",
+    description="API documentation for Go Postal SD",
+    doc="/api",
+    validate=True
+)
 
 # Check the current environment, default to 'development'
 ENVIRONMENT = os.getenv('ENVIRONMENT', 'development')

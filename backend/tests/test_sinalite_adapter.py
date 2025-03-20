@@ -89,7 +89,7 @@ def test_get_products_success(sinalite_adapter):
             }
         ]
 
-        url = f"{sinalite_adapter.base_url}/products" 
+        url = f"{sinalite_adapter.base_url}/product" 
         mocker.get(url, json=mock_products, status_code=200)
         products = sinalite_adapter.get_products()
 
@@ -104,8 +104,33 @@ def test_get_products_auth_failure(sinalite_adapter):
         auth_url = f"{sinalite_adapter.base_url}/auth/token"
         mocker.post(auth_url, json={"access_token": "mock_token", "token_type": "Bearer", "expires_in": 3600}, status_code=200)
 
-        url = f"{sinalite_adapter.base_url}/products" 
+        url = f"{sinalite_adapter.base_url}/product" 
         mocker.get(url, json={"error": "Unauthorized"}, status_code=401)
 
         products = sinalite_adapter.get_products()
         assert products == []
+
+def test_get_product_categories(sinalite_adapter):
+    """Test retrieving unique product categories."""
+    with requests_mock.Mocker() as mocker:
+        sinalite_adapter.access_token = "valid_token"
+        sinalite_adapter.token_type = "Bearer"
+        sinalite_adapter.token_expiry = time.time() + 3600  # Token is valid
+
+        mock_products = [
+            {"id": 1, "name": "Business Cards", "category": "Cards"},
+            {"id": 2, "name": "Flyers", "category": "Marketing"},
+            {"id": 3, "name": "Posters", "category": "Marketing"},
+            {"id": 4, "name": "Brochures", "category": "Marketing"},
+            {"id": 5, "name": "Stickers", "category": "Labels"},
+        ]
+
+        url = f"{sinalite_adapter.base_url}/product"
+        mocker.get(url, json=mock_products, status_code=200)
+
+        expected_categories = ["Cards", "Marketing", "Labels"]
+        categories = sinalite_adapter.get_product_categories()
+
+        # Check exact order and uniqueness without using set()
+        assert categories == expected_categories
+        assert len(categories) == len(set(categories))  # Ensure uniqueness

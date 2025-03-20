@@ -52,7 +52,6 @@ def test_create_user_success(client):
     assert result.data.shipping_address_id == user_data["shipping_address_id"]
     assert result.data.billing_address_id == user_data["billing_address_id"]
     assert result.error is None
-    # TODO: Continue from here
 
 def test_create_user_missing_fields(client):
     user_data = {

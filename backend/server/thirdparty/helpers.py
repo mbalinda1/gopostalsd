@@ -28,8 +28,8 @@ def make_http_request(third_party_adapter, method, endpoint, data=None, requires
             logger.info(f"{third_party_adapter.name} access expired. Re-gaining access ...")
             if not third_party_adapter.authenticate():
                 return None
-
-        headers["Authorization"] = f"{third_party_adapter.token_type} {third_party_adapter.access_token}"
+            
+        headers["Authorization"] = third_party_adapter.access_token
 
     url = f"{third_party_adapter.base_url}{endpoint}"
 

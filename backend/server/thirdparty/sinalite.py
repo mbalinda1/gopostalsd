@@ -37,12 +37,12 @@ class SinaliteAdapter:
             "audience": "https://apiconnect.sinalite.com",
             "grant_type": "client_credentials"
         }
-
+        
         response = make_http_request(self, "POST", "/auth/token", data=payload, requires_auth=False)
 
-        if response and "access_token" in response and "token_type" in response:
+        if response and "access_token" in response:
             self.access_token = response.get("access_token")
-            self.token_type = response.get("token_type")
+            self.token_type = response.get("token_type", "")
             self.token_lifetime= response.get("expires_in", 3600) # Default renewal to 1 Hour
             self.token_expiry = time.time() + self.token_lifetime
 
@@ -63,10 +63,15 @@ class SinaliteAdapter:
 
     def get_products(self):
         """Fetch available products from Sinalite API using the helper function."""
-        response = make_http_request(self, "GET", "/products", requires_auth=True)
+        response = make_http_request(self, "GET", "/product", requires_auth=True)
 
         if response:
             return response # Returns valid product data
         
         logger.error(f"{self.name} failed to retrieve products")
         return []
+    
+    def get_product_categories(self):
+        """Fetch available product categories"""
+        products = self.get_products()
+        return list({product["category"] for product in products})
