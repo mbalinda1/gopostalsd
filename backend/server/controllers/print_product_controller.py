@@ -67,7 +67,7 @@ class PrintProductController:
     @staticmethod
     def sync_print_product_categories() -> Result:
         """Sync categories from Sinalite API (manual trigger)."""
-        result =  Result
+        result = Result()
         sinalite_categories = sinalite.get_product_categories()
         existing_categories = [category.name for category in [category_instance.to_dict() for category_instance in PrintProductCategory.query.all()]]
         new_categories = [PrintProductCategory(name=name) for name in sinalite_categories if name not in existing_categories]
@@ -96,5 +96,25 @@ class PrintProductController:
     
     @staticmethod
     def get_products_by_category(category: str) -> Result:
-        pass
+        """Fetch print products from Sinalite API by category, esuring category is enabled in the database"""
+        result = Result()
+
+        # Validate category exists and is enabled in the database
+        local_category = PrintProductCategory.query.filter_by(name=category, enabled=True).first()
+        print(local_category)
+        if not local_category:
+            result.status = False
+            result.error = PrintProductErrors.PRINT_PRODUCT_CATEGORY_NOT_FOUND.value
+            return result
+        
+        # Fetch all products from sinalite
+        all_products = sinalite.get_products()
+
+        # Filter products by category
+        filtered_products = [product for product in all_products if product['category'] == category]
+
+        # Always return a list even if empty
+        result.data = filtered_products
+
+        return result
 
