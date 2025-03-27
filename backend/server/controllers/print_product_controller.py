@@ -3,7 +3,9 @@ from enum import Enum
 from server.config import sinalite
 from server.config import database as db
 from server.models.print_product import PrintProductCategory
+import logging
 
+logger = logging.getLogger(__name__)
 
 class PrintProductErrors(Enum):
     FAILED_TO_FETCH_PRINT_PRODUCTS = "Failed to fetch products"
@@ -50,14 +52,17 @@ class PrintProductController:
             result.data = []
             return result
 
+        logger.info("Fetching enabled categories ... ")
         categories = PrintProductCategory.query.filter_by(enabled=True).all()
-
-        if categories:
-            result.data = [category.to_dict() for category in categories]
+       
+        num_categories = len(categories)
+        if num_categories == 1:
+            logger.info(f"Found {num_categories} enabled category ... ")
+            result.data = [categories[0].to_dict()]
         else:
-            result.status = False
-            result.error = PrintProductErrors.FAILED_TO_FETCH_ENABLED_PRINT_PRODUCT_CATEGORIES.value
-
+            logger.info(f"Found {num_categories} enabled categories ... ")
+            result.data = [category.to_dict() for category in categories]
+        
         return result
 
     @staticmethod
@@ -65,7 +70,7 @@ class PrintProductController:
         """Enable or disable a category."""
         
         result = Result()
-        
+
         table_is_empty = (PrintProductCategory.query.first() is None) # TODO: Add test case
         if(table_is_empty):
             result.data = []
@@ -79,22 +84,33 @@ class PrintProductController:
         
         category.enabled = enabled
         db.session.commit()
-        result.data = PrintProductSuccessMessages.UPDATED_PRINT_PRODUCT_CATEGORY_STATUS_SUCCESSFULLY.value
+        result.data = {"message": PrintProductSuccessMessages.UPDATED_PRINT_PRODUCT_CATEGORY_STATUS_SUCCESSFULLY.value}
         return result
 
     @staticmethod
     def sync_print_product_categories() -> Result:
         """Sync categories from Sinalite API (manual trigger)."""
         result = Result()
+
+        logger.info("Requesting all product categories from Sinalite ...")
         sinalite_categories = sinalite.get_product_categories()
+
+        logger.info("Fetching all product categories currently known ...")
         existing_categories = [category.name for category in [category_instance.to_dict() for category_instance in PrintProductCategory.query.all()]]
         new_categories = [PrintProductCategory(name=name) for name in sinalite_categories if name not in existing_categories]
 
+        if (len(new_categories) == 1):
+            logger.info(f"Found {len(new_categories)} new category ...")
+        else: 
+            logger.info(f"Found {len(new_categories)} new categories ...")
+
         if new_categories:
+            logger.info("Syncing product categories ...")
             db.session.bulk_save_objects(new_categories)
             db.session.commit()
+            logger.info("Synced product categories successfully ...")
 
-        result.data = PrintProductSuccessMessages.PRINT_PRODUCT_CATEGORY_IN_SYNC.value
+        result.data = {"message": PrintProductSuccessMessages.PRINT_PRODUCT_CATEGORY_IN_SYNC.value}
         return result
     
     @staticmethod
@@ -124,7 +140,6 @@ class PrintProductController:
 
         # Validate category exists and is enabled in the database
         local_category = PrintProductCategory.query.filter_by(name=category, enabled=True).first()
-        print(local_category)
         if not local_category:
             result.status = False
             result.error = PrintProductErrors.PRINT_PRODUCT_CATEGORY_NOT_FOUND.value

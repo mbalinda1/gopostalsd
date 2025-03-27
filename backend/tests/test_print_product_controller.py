@@ -41,7 +41,7 @@ def test_update_print_product_category_status(client, create_categories):
 
     assert isinstance(result, Result)
     assert result.status is True
-    assert result.data == PrintProductSuccessMessages.UPDATED_PRINT_PRODUCT_CATEGORY_STATUS_SUCCESSFULLY.value
+    assert result.data == {"message": PrintProductSuccessMessages.UPDATED_PRINT_PRODUCT_CATEGORY_STATUS_SUCCESSFULLY.value}
     assert result.error is None
 
     updated_category = db.session.get(PrintProductCategory, category2.id)
@@ -63,7 +63,7 @@ def test_sync_print_product_categories(client):
 
         assert isinstance(result, Result)
         assert result.status is True
-        assert result.data == PrintProductSuccessMessages.PRINT_PRODUCT_CATEGORY_IN_SYNC.value
+        assert result.data == {"message": PrintProductSuccessMessages.PRINT_PRODUCT_CATEGORY_IN_SYNC.value}
         assert result.error is None
 
         categories = PrintProductCategory.query.all()
