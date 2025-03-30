@@ -15,7 +15,8 @@ export const fetchPrintProductCategories = async () => {
 
 export const updatePrintProductCategoryStatus = async (categoryId, enabled) => {
     try {
-        const response = await axios.put(`${API_BASE_URL}/print/categories/${categoryId}/status`, { enabled })
+        console.log(categoryId)
+        const response = await axios.put(`${API_BASE_URL}/print/categories/${categoryId}/status?enabled=${enabled}`)
         return response.data
     } catch (error) {
         console.error("Error updating category status:", error);

@@ -10,7 +10,7 @@ body, html, #root {
 
 /* Styling the scrollbar */
 ::-webkit-scrollbar {
-  width: 5px; /* Makes scrollbar thinner */
+  width: 3px; /* Makes scrollbar thinner */
 }
 
 ::-webkit-scrollbar-track {

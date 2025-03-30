@@ -28,7 +28,7 @@ const AdminPage = () => {
   const [productCategories, setProductCategories] = useState([]);
   const [loading, setLoading] = useState(false);
   const [filterMode, setFilterMode] = useState("All"); // Default filter mode
-  const [startingLetter, setStartingLetter] = useState(""); // Default starting letter
+  const [startingLetter, setStartingLetter] = useState(""); // Default Category Name
 
   useEffect(() => {
     loadProductCategories();
@@ -50,7 +50,7 @@ const AdminPage = () => {
   const handleToggle = async (categoryId, currentStatus) => {
     const updatedStatus = !currentStatus;
     const success = await updatePrintProductCategoryStatus(
-      currentStatus,
+      categoryId,
       updatedStatus
     );
     if (success) {
@@ -75,7 +75,7 @@ const AdminPage = () => {
     if (filterMode === "Enabled" && !category.enabled) return false;
     if (filterMode === "Disabled" && category.enabled) return false;
 
-    // Check for Starting Letter
+    // Check for Category Name
     if (startingLetter && !category.name.toLowerCase().startsWith(startingLetter.toLowerCase())) {
       return false;
     }
@@ -94,7 +94,7 @@ const AdminPage = () => {
         display: "flex",
         flexDirection: "column",
         minHeight: "100vh",
-        position: "relative",
+        position: "relative"
       }}
     >
       <Navbar />
@@ -104,7 +104,7 @@ const AdminPage = () => {
           flex: 1,
           mt: "64px",
           p: 4,
-          backgroundColor: "background.paper",
+    
         }}
       >
         <Header
@@ -157,9 +157,9 @@ const Header = ({
         </Typography>
       </Box>
       <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-        {/* Starting Letter Input */}
+        {/* Category Name Input */}
         <TextField
-          label="Starting Letter"
+          label="Category Name"
           variant="outlined"
           size="small"
           value={startingLetter}
@@ -196,12 +196,12 @@ const ProductCategoryTable = ({ productCategories, handleToggle }) => {
     <TableContainer component={Paper} sx={{ mt: 4, overflowX: "auto" }}>
       <Table>
         <TableHead>
-          <TableRow>
+          <TableRow sx={{ fontWeight: "bold", backgroundColor: "primary.main", color: "#fff"}}>
             <TableCell>
-              <Typography sx={{ fontWeight: "bold" }}>Category</Typography>
+              <Typography sx={{ fontWeight: "bold", color: "#fff" }}>Category</Typography>
             </TableCell>
             <TableCell>
-              <Typography sx={{ fontWeight: "bold" }}>Enable</Typography>
+            <Typography sx={{ fontWeight: "bold", color: "#fff" }}>Enable</Typography>
             </TableCell>
           </TableRow>
         </TableHead>

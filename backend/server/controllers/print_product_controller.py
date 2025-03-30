@@ -13,7 +13,6 @@ class PrintProductErrors(Enum):
     FAILED_TO_FETCH_ENABLED_PRINT_PRODUCT_CATEGORIES = "Failed to fetch enabled print product categories"
     PRINT_PRODUCT_CATEGORY_NOT_FOUND = "Print product category not found"
     
-
 class PrintProductSuccessMessages(Enum):
     UPDATED_PRINT_PRODUCT_CATEGORY_STATUS_SUCCESSFULLY = "Updated print product category status successfully"
     PRINT_PRODUCT_CATEGORY_IN_SYNC = "Print products are in sync"
@@ -31,7 +30,8 @@ class PrintProductController:
             result.data = []
             return result
 
-        categories = PrintProductCategory.query.all()
+        # ✅ Always fetch categories sorted by name
+        categories = PrintProductCategory.query.order_by(PrintProductCategory.name.asc()).all()
 
         if categories:
             result.data = [category.to_dict() for category in categories]
@@ -68,24 +68,40 @@ class PrintProductController:
     @staticmethod
     def update_print_product_category_status(category_id: int, enabled: bool):
         """Enable or disable a category."""
-        
         result = Result()
 
-        table_is_empty = (PrintProductCategory.query.first() is None) # TODO: Add test case
-        if(table_is_empty):
-            result.data = []
-            return result
+        try:
+            table_is_empty = (PrintProductCategory.query.first() is None)  # TODO: Add test case
+            if table_is_empty:
+                result.data = []
+                return result
 
-        category =  db.session.get(PrintProductCategory, category_id)
-        if not category:
-            result.status = False
-            result.error = PrintProductErrors.PRINT_PRODUCT_CATEGORY_NOT_FOUND.value
-            return result
+            # Fetch the category by ID
+            category = db.session.get(PrintProductCategory, category_id)
+            if not category:
+                logger.warning(f"Category with ID {category_id} not found.")
+                result.status = False
+                result.error = PrintProductErrors.PRINT_PRODUCT_CATEGORY_NOT_FOUND.value
+                return result
+
+            # Update category status
+            category.enabled = enabled
+            db.session.commit()  # ✅ Commit the transaction
+
+            logger.info(f"Updated category {category_id} to {'enabled' if enabled else 'disabled'} successfully.")
+            result.data = {"message": PrintProductSuccessMessages.UPDATED_PRINT_PRODUCT_CATEGORY_STATUS_SUCCESSFULLY.value}
         
-        category.enabled = enabled
-        db.session.commit()
-        result.data = {"message": PrintProductSuccessMessages.UPDATED_PRINT_PRODUCT_CATEGORY_STATUS_SUCCESSFULLY.value}
+        except Exception as e:
+            logger.error(f"Failed to update category status: {e}")
+            db.session.rollback()  # ✅ Rollback in case of failure
+            result.status = False
+            result.error = "An error occurred while updating the category."
+        
+        finally:
+            db.session.close()  # ✅ Close the session properly
+
         return result
+
 
     @staticmethod
     def sync_print_product_categories() -> Result:
@@ -93,25 +109,48 @@ class PrintProductController:
         result = Result()
 
         logger.info("Requesting all product categories from Sinalite ...")
-        sinalite_categories = sinalite.get_product_categories()
+        try:
+            sinalite_categories = sinalite.get_product_categories()
+            if not sinalite_categories:
+                raise ValueError("No categories returned from Sinalite API")
+        except Exception as e:
+            logger.error(f"Failed to fetch categories from Sinalite API: {e}")
+            result.data = {"message": "Failed to sync product categories"}
+            return result
 
         logger.info("Fetching all product categories currently known ...")
-        existing_categories = [category.name for category in [category_instance.to_dict() for category_instance in PrintProductCategory.query.all()]]
-        new_categories = [PrintProductCategory(name=name) for name in sinalite_categories if name not in existing_categories]
+        try:
+            existing_categories = {
+                category.name for category in PrintProductCategory.query.with_entities(PrintProductCategory.name).all()
+            }
+        except Exception as e:
+            logger.error(f"Failed to fetch existing product categories: {e}")
+            result.data = {"message": "Failed to sync product categories"}
+            return result
 
-        if (len(new_categories) == 1):
-            logger.info(f"Found {len(new_categories)} new category ...")
-        else: 
-            logger.info(f"Found {len(new_categories)} new categories ...")
+        new_categories = [
+            PrintProductCategory(name=name) for name in sinalite_categories if name not in existing_categories
+        ]
+
+        logger.info(f"Found {len(new_categories)} new {'category' if len(new_categories) == 1 else 'categories'} ...")
 
         if new_categories:
             logger.info("Syncing product categories ...")
-            db.session.bulk_save_objects(new_categories)
-            db.session.commit()
-            logger.info("Synced product categories successfully ...")
+            try:
+                db.session.bulk_save_objects(new_categories)  # ✅ Save new categories
+                db.session.commit()  # ✅ Commit changes
+                logger.info("Synced product categories successfully ...")
+            except Exception as e:
+                logger.error(f"Failed to sync new product categories: {e}")
+                db.session.rollback()  # ✅ Rollback in case of failure
+                result.data = {"message": "Failed to sync product categories"}
+                return result
+            finally:
+                db.session.close()  # ✅ Close session properly
 
         result.data = {"message": PrintProductSuccessMessages.PRINT_PRODUCT_CATEGORY_IN_SYNC.value}
         return result
+
     
     @staticmethod
     def get_all_products() -> Result:

@@ -79,9 +79,10 @@ class PrintProductCategoryStatusResource(Resource):
     def put(self, category_id):
         """Updates category status"""
         from flask import request
-
+        print(request.args)
         # Get enabled from query params instead of JSON body
         enabled = request.args.get("enabled", type=lambda arg: arg.lower() == "true")
+        
         result = PrintProductController.update_print_product_category_status(category_id, enabled)
 
         if result.status:
