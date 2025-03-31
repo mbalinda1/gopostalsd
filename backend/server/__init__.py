@@ -50,7 +50,4 @@ def create_server(config="development"):
     from server.routes import register_routes
     register_routes(server)
 
-    
-
-
     return server

@@ -16,7 +16,7 @@ swagger = Api(
     title="Go Postal SD API",
     version="1.0",
     description="API documentation for Go Postal SD",
-    doc="/api",
+    doc="/",
     validate=True
 )
 
