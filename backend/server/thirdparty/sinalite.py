@@ -2,10 +2,12 @@
 import time
 from flask import Flask
 from server.thirdparty.helpers import logger, make_http_request
+import os
 
 # Adapter class for interacting with the third party Sinlite API
 class SinaliteAdapter:
     def __init__(self, app=None):
+        self.auth_base_url = None
         self.base_url = None
         self.client_id = None
         self.client_secret = None
@@ -24,6 +26,7 @@ class SinaliteAdapter:
 
     def init_app(self, app: Flask) -> bool:
         """Initialize the adapter with Flask app configuration."""
+        self.auth_base_url = os.getenv("SINALITE_BASE_URL_DEV")
         self.base_url = app.config["SINALITE_BASE_URL"]
         self.client_id = app.config["SINALITE_CLIENT_ID"]
         self.client_secret = app.config["SINALITE_CLIENT_SECRET"]
@@ -38,7 +41,8 @@ class SinaliteAdapter:
             "grant_type": "client_credentials"
         }
         
-        response = make_http_request(self, "POST", "/auth/token", data=payload, requires_auth=False)
+        
+        response = make_http_request(self, "POST", "/auth/token", data=payload, requires_auth=False, custom_base_url=self.auth_base_url)
 
         if response and "access_token" in response:
             self.access_token = response.get("access_token")

@@ -4,8 +4,9 @@ from flask_cors import CORS
 from server.config import DevelopmentConfig, TestingConfig, ProductionConfig
 from server.config import database, migrate, sinalite, swagger
 from server.models import * # So that they can be detected by migrations
+import logging
 
-
+logger = logging.getLogger(__name__)
 def create_server(config="development"):
     """
     Factory function to create and configure the Flask application.
@@ -29,6 +30,10 @@ def create_server(config="development"):
     else:  # Default to development configuration
         server.config.from_object(DevelopmentConfig)
 
+    # Log the loaded environment and Sinalite URL
+    logger.info(f"Loaded Environment: {config}")
+    logger.info(f"Sinalite: {server.config['SINALITE_BASE_URL']}")
+
     # Initialize database support
     database.init_app(server)
 
@@ -44,5 +49,8 @@ def create_server(config="development"):
     # Register API routes
     from server.routes import register_routes
     register_routes(server)
+
+    
+
 
     return server

@@ -5,7 +5,7 @@ import time
 
 logger = logging.getLogger(__name__)
 
-def make_http_request(third_party_adapter, method, endpoint, data=None, requires_auth=True, max_retries=3, retry_delay=2):
+def make_http_request(third_party_adapter, method, endpoint, data=None, requires_auth=True, max_retries=3, retry_delay=2, custom_base_url = None):
     """
     Makes a request to a Thirdparty API, handling authentication if needed.
     
@@ -17,7 +17,7 @@ def make_http_request(third_party_adapter, method, endpoint, data=None, requires
         requires_auth (bool): Whether authentication is required.
         max_retries (int): Number of times to retry on 429.
         retry_delay (int): Time (in seconds) to wait before retrying.
-    
+        base_url (str): custom base url
     Returns:
         dict: JSON response from the API, or None on failure.
     """
@@ -31,7 +31,7 @@ def make_http_request(third_party_adapter, method, endpoint, data=None, requires
             
         headers["Authorization"] = third_party_adapter.access_token
 
-    url = f"{third_party_adapter.base_url}{endpoint}"
+    url = f"{third_party_adapter.base_url}{endpoint}" if custom_base_url is None else f"{custom_base_url}{endpoint}" #TODO: Add test for this
 
     # STATUS CODES FOR RETRY
     RATE_LIMIT_CODE = 429

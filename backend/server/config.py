@@ -37,10 +37,10 @@ class Config:
 class DevelopmentConfig(Config):
     # Database connection string for development environment
     # Defaults to SQLite if DATABASE_URL environment variable is not set
-    SQLALCHEMY_DATABASE_URI = os.getenv('DATABASE_URL', 'sqlite:///gopostalsd.db')
+    SQLALCHEMY_DATABASE_URI = os.getenv('DATABASE_URL_DEV', 'sqlite:///gopostalsd.db')
 
     # Sinalite integration information
-    SINALITE_BASE_URL = 'https://api.sinaliteuppy.com'
+    SINALITE_BASE_URL =  os.getenv('SINALITE_BASE_URL_DEV', 'https://api.sinaliteuppy.com') 
     SINALITE_CLIENT_ID = os.getenv('SINALITE_CLIENT_ID')
     SINALITE_CLIENT_SECRET = os.getenv('SINALITE_CLIENT_SECRET')
 
@@ -49,12 +49,11 @@ class DevelopmentConfig(Config):
 
 class ProductionConfig(Config):
     # Database connection string for production environment
-    # Defaults to PostgreSQL if DATABASE_URL environment variable is not set
     # Format: postgresql://username:password@host:port/database_name
-    SQLALCHEMY_DATABASE_URI = os.getenv('DATABASE_URL', 'postgresql://user:password@localhost:5432/gopostalsd_db')
+    SQLALCHEMY_DATABASE_URI = os.getenv('DATABASE_URL_PROD')
 
     # Sinalite integration information
-    SINALITE_BASE_URL = 'https://liveapi.sinalite.com'
+    SINALITE_BASE_URL = os.getenv('SINALITE_BASE_URL_PROD')
     SINALITE_CLIENT_ID = os.getenv('SINALITE_CLIENT_ID')
     SINALITE_CLIENT_SECRET = os.getenv('SINALITE_CLIENT_SECRET')
 

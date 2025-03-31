@@ -30,7 +30,7 @@ class PrintProductController:
             result.data = []
             return result
 
-        # ✅ Always fetch categories sorted by name
+        # Always fetch categories sorted by name
         categories = PrintProductCategory.query.order_by(PrintProductCategory.name.asc()).all()
 
         if categories:
@@ -88,7 +88,6 @@ class PrintProductController:
             category.enabled = enabled
             db.session.commit()  # ✅ Commit the transaction
 
-            logger.info(f"Updated category {category_id} to {'enabled' if enabled else 'disabled'} successfully.")
             result.data = {"message": PrintProductSuccessMessages.UPDATED_PRINT_PRODUCT_CATEGORY_STATUS_SUCCESSFULLY.value}
         
         except Exception as e:
