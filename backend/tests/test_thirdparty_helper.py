@@ -114,3 +114,23 @@ def test_make_http_request_general_request_exception(mock_adapter):
         response = make_http_request(mock_adapter, "GET", "/test-endpoint", requires_auth=True)
 
         assert response is None
+
+def test_make_http_request_with_custom_base_url(mock_adapter):
+    """Test that custom_base_url is used when provided."""
+    with requests_mock.Mocker() as mocker:
+        custom_base_url = "https://customapi.sinalite.com"
+        url = f"{custom_base_url}/test-endpoint"
+        mock_response = {"message": "Custom Base URL Success"}
+        mocker.get(url, json=mock_response, status_code=200)
+
+        # Invoke make_http_request with custom_base_url
+        response = make_http_request(
+            mock_adapter,
+            "GET",
+            "/test-endpoint",
+            requires_auth=True,
+            custom_base_url=custom_base_url
+        )
+
+        # Assertions
+        assert response == mock_response

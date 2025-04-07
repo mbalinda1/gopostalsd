@@ -39,21 +39,31 @@ def test_init_app(sinalite_adapter, test_app):
     assert sinalite_adapter.name == "Sinalite"
 
 def test_authentication_success(sinalite_adapter):
-    """Test successful authentication"""
+    """Test successful authentication using custom_base_url."""
     with requests_mock.Mocker() as mocker:
         mock_response = {
             "access_token": "mock_token",
             "token_type": "Bearer",
             "expires_in": 3600
         }
-        url = f"{sinalite_adapter.base_url}/auth/token"
+        # Using the custom_base_url for the test
+        custom_base_url = "https://customapi.sinalite.com"
+        url = f"{custom_base_url}/auth/token"
         mocker.post(url, json=mock_response, status_code=200)
 
+        # Update the adapter to use a custom auth_base_url
+        sinalite_adapter.auth_base_url = custom_base_url
+
+        # Test the authenticate method
         assert sinalite_adapter.authenticate() is True
         assert sinalite_adapter.access_token == "mock_token"
         assert sinalite_adapter.token_type == "Bearer"
         assert sinalite_adapter.token_lifetime == 3600
         assert sinalite_adapter.token_expiry > time.time()
+
+        # Confirm that the request was made to the custom_base_url
+        assert mocker.called
+        assert mocker.last_request.url == url
 
 def test_authenticate_invalid_credentials(sinalite_adapter):
     """Test authentication failure with invalid credentials."""
@@ -96,19 +106,37 @@ def test_get_products_success(sinalite_adapter):
         assert products == mock_products
 
 def test_get_products_auth_failure(sinalite_adapter):
-    """Test product retrieval failure due to authentication issue"""
+    """Test product retrieval failure due to authentication issue."""
     with requests_mock.Mocker() as mocker:
-        sinalite_adapter.access_token = None # No valid token
-
-        # Mock authentication request
-        auth_url = f"{sinalite_adapter.base_url}/auth/token"
+        # Set the custom auth_base_url
+        sinalite_adapter.auth_base_url = "https://customapi.sinalite.com"
+        auth_url = f"{sinalite_adapter.auth_base_url}/auth/token"
+        
         mocker.post(auth_url, json={"access_token": "mock_token", "token_type": "Bearer", "expires_in": 3600}, status_code=200)
 
-        url = f"{sinalite_adapter.base_url}/product" 
+        # Mock the product retrieval request (using base_url, not auth_base_url)
+        url = f"{sinalite_adapter.base_url}/product"
         mocker.get(url, json={"error": "Unauthorized"}, status_code=401)
 
+        sinalite_adapter.access_token = None  # No valid token
         products = sinalite_adapter.get_products()
+        
+        # Assertions
         assert products == []
+
+def test_authenticate_invalid_credentials(sinalite_adapter):
+    """Test authentication failure with invalid credentials."""
+    with requests_mock.Mocker() as mocker:
+        # Set the custom auth_base_url
+        sinalite_adapter.auth_base_url = "https://customapi.sinalite.com"
+        url = f"{sinalite_adapter.auth_base_url}/auth/token"
+        
+        mock_response = {"message": "Invalid authentication request"}
+        mocker.post(url, json=mock_response, status_code=401)
+
+        # Test the authentication method
+        assert sinalite_adapter.authenticate() is False
+        assert sinalite_adapter.access_token is None
 
 def test_get_product_categories(sinalite_adapter):
     """Test retrieving unique product categories."""

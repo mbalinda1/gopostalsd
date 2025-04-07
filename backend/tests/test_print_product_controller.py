@@ -89,7 +89,7 @@ def test_update_print_product_category_status(client, create_categories):
     assert result.error == PrintProductErrors.PRINT_PRODUCT_CATEGORY_NOT_FOUND.value
 
 def test_sync_print_product_categories(client, clean_categories):
-    with patch('server.thirdparty.sinalite.get_product_categories', return_value=[CATEGORY_BUSINESS_CARDS, CATEGORY_FLYERS, CATEGORY_POSTERS]) as mock_get_product_categories:
+    with patch('server.config.sinalite.get_product_categories', return_value=[CATEGORY_BUSINESS_CARDS, CATEGORY_FLYERS, CATEGORY_POSTERS]) as mock_get_product_categories:
         result = PrintProductController.sync_print_product_categories()
 
         assert isinstance(result, Result)
@@ -103,7 +103,7 @@ def test_sync_print_product_categories(client, clean_categories):
         mock_get_product_categories.assert_called_once()
 
 def test_get_all_products(client):
-    with patch('server.thirdparty.sinalite.get_products', return_value=[{"id": 1, "name": "Business Card"}]) as mock_get_products:
+    with patch('server.config.sinalite.get_products', return_value=[{"id": 1, "name": "Business Card"}]) as mock_get_products:
         result = PrintProductController.get_all_products()
 
         assert isinstance(result, Result)
@@ -113,7 +113,7 @@ def test_get_all_products(client):
         assert result.error is None
         mock_get_products.assert_called_once()
 
-    with patch('server.thirdparty.sinalite.get_products', return_value=[]) as mock_get_products:
+    with patch('server.config.sinalite.get_products', return_value=[]) as mock_get_products:
         result = PrintProductController.get_all_products()
 
         assert isinstance(result, Result)
@@ -123,7 +123,7 @@ def test_get_all_products(client):
         mock_get_products.assert_called_once()
 
 def test_get_products_by_category(client, create_categories):
-    with patch('server.thirdparty.sinalite.get_products', return_value=[
+    with patch('server.config.sinalite.get_products', return_value=[
         {"id": 1, "name": "Premium Business Card", "category": CATEGORY_BUSINESS_CARDS},
         {"id": 2, "name": "Standard Business Card", "category": CATEGORY_BUSINESS_CARDS},
         {"id": 3, "name": "Marketing Flyer", "category": CATEGORY_FLYERS},
@@ -151,7 +151,7 @@ def test_get_products_by_category(client, create_categories):
         assert result.data is None
         assert result.error == PrintProductErrors.PRINT_PRODUCT_CATEGORY_NOT_FOUND.value
 
-    with patch('server.thirdparty.sinalite.get_products', return_value=[
+    with patch('server.config.sinalite.get_products', return_value=[
         {"id": 1, "name": "Premium Business Card", "category": CATEGORY_BUSINESS_CARDS},
         {"id": 2, "name": "Standard Business Card", "category": CATEGORY_BUSINESS_CARDS},
     ]) as mock_get_products:
