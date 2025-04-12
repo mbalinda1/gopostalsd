@@ -36,7 +36,7 @@ const Navbar = () => {
               '&:hover': { color: (theme) => theme.palette.secondary.main },
             }}
           >
-            Home
+            Shop
           </Button>
           <Button
             component={Link}
