@@ -233,6 +233,7 @@ class PrintProductController:
                     # Upload file using current filestorage
                     filestorage = current_app.extensions["filestorage"]
                     image_url = filestorage.upload_file(file_data, filename, content_type)
+                    print(f"Image URL {image_url}")
 
                     # Save URL in DB
                     category.image = image_url
