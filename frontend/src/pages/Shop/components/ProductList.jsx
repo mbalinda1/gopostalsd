@@ -11,7 +11,7 @@ const ProductList = ({ category }) => {
     useEffect(() => {
         const loadProducts = async () => {
         try {
-            const fetchedProducts = await fetchPrintProductsByCategory(category.name);  // Fetch products by category name
+            const fetchedProducts = await fetchPrintProductsByCategory(category.id);  // Fetch products by category id
             setProducts(fetchedProducts);
         } catch (error) {
             console.error("Error fetching products: ", error);
