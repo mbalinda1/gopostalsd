@@ -12,9 +12,7 @@ import {
   DialogContent,
   DialogActions,
   TextField,
-  IconButton,
 } from "@mui/material";
-import { PhotoCamera } from "@mui/icons-material";
 
 import { fetchAllPrintProductsByCategory, updatePrintProductDetails } from "../../../services/product_service";
 import logoImage from "../../../assets/logo.png";
@@ -126,7 +124,7 @@ const ProductViewPage = ({ category, onBack }) => {
           </Typography>
         </Box>
       ) : (
-        <Grid container spacing={3} sx={{ justifyContent: "flex-start" }}>
+        <Grid container spacing={3} sx={{ justifyContent: "center" }}>
           {products.map((product) => (
             <Grid item xs={12} sm={6} md={4} lg={3} key={product.id}>
             <Card
@@ -139,7 +137,8 @@ const ProductViewPage = ({ category, onBack }) => {
                   transform: "translateY(-4px)",
                   boxShadow: 4,
                 },
-                minHeight: 400,
+                height: 500,
+                width: 400
               }}
             >
               <Box

@@ -6,7 +6,7 @@ import placeholderImage from '../../../assets/logo.png';
 const ProductCategoryList = ({ productCategories, handleProductCategoryClick }) => {
   return (
     <Box sx={{ width: "100%", p: 0 }}>
-      <Grid container spacing={4}>
+      <Grid container spacing={4} display={"flex"}>
         {productCategories.map((category) => (
           <Grid key={category.id}>
             <Card

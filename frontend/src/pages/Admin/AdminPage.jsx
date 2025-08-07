@@ -88,23 +88,24 @@ const AdminPage = () => {
       <Navbar />
       <SpinnerOverlay loading={loading} />
       <Box sx={{ flex: 1, mt: "64px", p: 4 }}>
-        <ProductCategoryHeader
-          loading={loading}
-          handleSync={handleSync}
-          totalCategories={totalCategories}
-          enabledCategories={enabledCategories}
-          filterMode={filterMode}
-          setFilterMode={setFilterMode}
-          startingLetter={startingLetter}
-          setStartingLetter={setStartingLetter}
-        />
         {selectedCategory ? (
           <ProductViewPage
             category={selectedCategory}
             onBack={handleBackToCategories}
           />
         ) : (
+          
           <>
+            <ProductCategoryHeader
+              loading={loading}
+              handleSync={handleSync}
+              totalCategories={totalCategories}
+              enabledCategories={enabledCategories}
+              filterMode={filterMode}
+              setFilterMode={setFilterMode}
+              startingLetter={startingLetter}
+              setStartingLetter={setStartingLetter}
+            />
             <ProductCategoryTable
               productCategories={filteredCategories}
               handleToggle={handleToggle}
