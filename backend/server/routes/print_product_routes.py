@@ -43,11 +43,11 @@ class PrintProductResource(Resource):
         else:
             return {"error": result.error}, 500
         
-@api.route("/categories")
+@api.route("/categories/all")
 class PrintProductCategoriesResource(Resource):
     """Ressource to fetch all product categories"""
 
-    @api.doc(description="Fetch all product categroies")
+    @api.doc(description="Fetch all product categories")
     @api.marshal_list_with(category_model, code=200)
     def get(self):
         """ Retrieve all product categories"""
@@ -58,7 +58,7 @@ class PrintProductCategoriesResource(Resource):
         else:
             return {"error": result.error}, 500
 
-@api.route("/categories/enabled")
+@api.route("/categories")
 class PrintProductCategoriesEnabledResource(Resource):
     """Resource of fetching only enabled categories"""
     
@@ -106,22 +106,40 @@ class PrintProductCategorySyncResource(Resource):
         else:
             return {"error": result.error}, 500
 
-@api.route("/products/<string:category>")
-@api.param("category", "The category of the products to retrieve")
-class PrintProductByCategoryResource(Resource):
+@api.route("/products/<int:category_id>")
+@api.param("category_id", "The category ID of the products to retrieve")
+class PrintProductByCategoryEnabledResource(Resource):
     """Resource for fetching print products by category"""
 
     @api.doc(description="Fetch list of print products listed by category")
     @api.marshal_list_with(product_model, code=200)
     @api.response(500, "Server error")
-    def get(self, category):
+    def get(self, category_id):
         """Retrieve print products by category"""
-        result = PrintProductController.get_products_by_category(category)
+        result = PrintProductController.get_enabled_products_by_category(category_id)
 
         if result.status:
             return result.data, 200
         else:
-            return {"error": result.error}, 500
+            return {"error": result.error}, 200
+
+@api.route("/products/<int:category_id>/all")
+@api.param("category_id", "The category ID of the products to retrieve")
+class PrintProductByCategoryAllResource(Resource):
+    """Resource for fetching print products by category"""
+
+    @api.doc(description="Fetch list of print products listed by category")
+    @api.marshal_list_with(product_model, code=200)
+    @api.response(500, "Server error")
+    def get(self, category_id):
+        """Retrieve print products by category"""
+
+        result = PrintProductController.get_all_products_by_category(category_id)
+       
+        if result.status:
+            return result.data, 200
+        else:
+            return {"error": result.error}, 200
 
 update_category_parser = reqparse.RequestParser()
 update_category_parser.add_argument("description", type=str, location="form", required=False, help="New description for the category")

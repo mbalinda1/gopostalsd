@@ -15,7 +15,7 @@ const SpinnerOverlay = ({ loading }) => {
         left: 0,
         width: "100%",
         height: "100%",
-        backgroundColor: "rgba(0, 0, 0, 0.4)", // Semi-transparent overlay
+        backgroundColor: "rgba(0, 0, 0, 0.11)", // Semi-transparent overlay
         zIndex: 999, // Ensures it's above other content
       }}
     >

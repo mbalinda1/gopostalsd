@@ -170,8 +170,36 @@ class PrintProductController:
         return result
     
     @staticmethod
-    def get_products_by_category(category: str) -> Result:
-        """Fetch print products from Sinalite API by category, esuring category is enabled in the database"""
+    def get_all_products_by_category(category_id: int) -> Result:
+        """Fetch print products from Sinalite API by category ID, regardless of enabled status"""
+        result = Result()
+
+        table_is_empty = (PrintProductCategory.query.first() is None) # TODO: Add test case
+        if(table_is_empty):
+            result.data = []
+            return result
+        
+        # Validate category exists (regardless of enabled status)
+        local_category = db.session.get(PrintProductCategory, category_id)
+        if not local_category:
+            result.status = False
+            result.error = PrintProductErrors.PRINT_PRODUCT_CATEGORY_NOT_FOUND.value
+            return result
+
+        # Fetch all products from sinalite
+        all_products = sinalite.get_products()
+
+        # Filter products by category name
+        filtered_products = [product for product in all_products if product['category'] == local_category.name]
+
+        # Always return a list even if empty
+        result.data = filtered_products
+
+        return result
+
+    @staticmethod
+    def get_enabled_products_by_category(category_id: int) -> Result:
+        """Fetch print products from Sinalite API by category ID, ensuring category is enabled in the database"""
         result = Result()
 
         table_is_empty = (PrintProductCategory.query.first() is None) # TODO: Add test case
@@ -180,8 +208,8 @@ class PrintProductController:
             return result
 
         # Validate category exists and is enabled in the database
-        local_category = PrintProductCategory.query.filter_by(name=category, enabled=True).first()
-        if not local_category:
+        local_category = db.session.get(PrintProductCategory, category_id)
+        if not local_category or not local_category.enabled:
             result.status = False
             result.error = PrintProductErrors.PRINT_PRODUCT_CATEGORY_NOT_FOUND.value
             return result
@@ -189,8 +217,8 @@ class PrintProductController:
         # Fetch all products from sinalite
         all_products = sinalite.get_products()
 
-        # Filter products by category
-        filtered_products = [product for product in all_products if product['category'] == category]
+        # Filter products by category name
+        filtered_products = [product for product in all_products if product['category'] == local_category.name]
 
         # Always return a list even if empty
         result.data = filtered_products
