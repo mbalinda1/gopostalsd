@@ -2,7 +2,7 @@ from server.controllers import Result
 from enum import Enum
 from server.config import sinalite
 from server.config import database as db
-from server.models.print_product import PrintProductCategory
+from server.models.print_product import PrintProductCategory, PrintProductType
 from markupsafe import escape
 import logging
 from werkzeug.datastructures import FileStorage
@@ -21,10 +21,30 @@ class PrintProductErrors(Enum):
     EMPTY_IMAGE_FILENAME = "Empty image filename"
     INVALID_IMAGE_URL = "Invalid image URL. Must start with http:// or https://"
     
+    # Product Type specific errors
+    PRINT_PRODUCT_TYPE_NOT_FOUND = "Print product type not found"
+    FAILED_TO_CREATE_PRODUCT_TYPE = "Failed to create product type"
+    FAILED_TO_UPDATE_PRODUCT_TYPE = "Failed to update product type"
+    FAILED_TO_DELETE_PRODUCT_TYPE = "Failed to delete product type"
+    PRODUCT_TYPE_NAME_REQUIRED = "Product type name is required"
+    PRODUCT_TYPE_CATEGORY_ID_REQUIRED = "Product type category ID is required"
+    PRODUCT_TYPE_DESCRIPTION_REQUIRED = "Product type description is required"
+    PRODUCT_TYPE_CATEGORY_NOT_FOUND = "Product type category not found"
+    PRODUCT_TYPE_NAME_ALREADY_EXISTS = "Product type name already exists in this category"
+    PRODUCT_TYPE_IN_USE = "Cannot delete product type: It is being used by existing products"
+    PRODUCT_TYPE_NAME_TOO_LONG = "Product type name is too long (max 255 characters)"
+    PRODUCT_TYPE_NAME_TOO_SHORT = "Product type name is too short (min 2 characters)"
+    FAILED_TO_FETCH_PRINT_PRODUCT_TYPES = "Failed to fetch print product types"
+    
 class PrintProductSuccessMessages(Enum):
     UPDATED_PRINT_PRODUCT_CATEGORY_STATUS_SUCCESSFULLY = "Updated print product category status successfully"
     PRINT_PRODUCT_CATEGORY_IN_SYNC = "Print products are in sync"
     PRODUCT_CATEGORY_UPDATED_SUCCESSFULLY = "Product category updated successfully"
+    
+    # Product Type specific success messages
+    PRODUCT_TYPE_CREATED_SUCCESSFULLY = "Product type created successfully"
+    PRODUCT_TYPE_UPDATED_SUCCESSFULLY = "Product type updated successfully"
+    PRODUCT_TYPE_DELETED_SUCCESSFULLY = "Product type deleted successfully"
 
 class PrintProductController:
 
@@ -226,7 +246,7 @@ class PrintProductController:
         return result
 
     @staticmethod
-    def update_print_product_category(category_id: int, description: str = None, image=None):
+    def update_print_product_category(category_id: int, description: str = None, image=None) -> Result:
         """Update the description or image of a product category securely"""
         result = Result()
 
@@ -279,5 +299,209 @@ class PrintProductController:
             db.session.rollback()
             result.status = False
             result.error = f"{PrintProductErrors.FAILED_TO_UPDATE_PRODUCT_CATEGORY.value}: {str(e)}"
+
+        return result
+
+    @staticmethod
+    def get_all_print_product_types() -> Result:
+        """Retrieve all print product types from the database."""
+        result = Result()
+
+        try:
+            # Check if table is empty
+            table_is_empty = (PrintProductType.query.first() is None)
+            if table_is_empty:
+                result.data = []
+                result.status = True
+                return result
+
+            # Fetch all product types sorted by name
+            product_types = PrintProductType.query.order_by(PrintProductType.name.asc()).all()
+
+            if product_types:
+                result.data = [product_type.to_dict() for product_type in product_types]
+                result.status = True
+            else:
+                result.status = False
+                result.error = PrintProductErrors.FAILED_TO_FETCH_PRINT_PRODUCT_TYPES.value
+            
+        except Exception as e:
+            result.status = False
+            result.error = f"{PrintProductErrors.FAILED_TO_FETCH_PRINT_PRODUCT_TYPES.value}: {str(e)}"
+            logger.error(f"Error fetching print product types: {str(e)}")
+
+        
+        return result
+
+    @staticmethod
+    def create_print_product_type(data: dict) -> Result:
+        """Create a new print product type in the database."""
+        result = Result()
+        
+        try:
+            # Extract fields from input data
+            name = data.get('name')
+            category_id = data.get('category_id')
+            description = data.get('description')
+            image = data.get('image')
+
+            # Validate required fields
+            if not name:
+                result.status = False
+                result.error = PrintProductErrors.PRODUCT_TYPE_NAME_REQUIRED.value
+                return result
+            
+            if not category_id:
+                result.status = False
+                result.error = PrintProductErrors.PRODUCT_TYPE_CATEGORY_ID_REQUIRED.value
+                return result
+                
+            if not description:
+                result.status = False
+                result.error = PrintProductErrors.PRODUCT_TYPE_DESCRIPTION_REQUIRED.value
+                return result
+            
+            # Validate name length
+            if len(name) < 2:
+                result.status = False
+                result.error = PrintProductErrors.PRODUCT_TYPE_NAME_TOO_SHORT.value
+                return result
+                
+            if len(name) > 255:
+                result.status = False
+                result.error = PrintProductErrors.PRODUCT_TYPE_NAME_TOO_LONG.value
+                return result
+            
+            # Validate category exists
+            category = db.session.get(PrintProductCategory, category_id)
+            if not category:
+                result.status = False
+                result.error = PrintProductErrors.PRODUCT_TYPE_CATEGORY_NOT_FOUND.value
+                return result
+
+            # Check if product type with same name already exists in this category
+            existing_type = PrintProductType.query.filter_by(
+                name=name, 
+                category_id=category_id
+            ).first()
+            
+            if existing_type:
+                result.status = False
+                result.error = PrintProductErrors.PRODUCT_TYPE_NAME_ALREADY_EXISTS.value
+                return result
+
+            # Create new product type (image is optional)
+            new_product_type = PrintProductType(
+                name=name,
+                category_id=category_id,
+                description=description,
+                image=image if image else None
+            )
+            
+            db.session.add(new_product_type)
+            db.session.commit()
+            
+            result.data = new_product_type.to_dict()
+            result.status = True
+            
+        except Exception as e:
+            db.session.rollback()
+            result.status = False
+            result.error = f"{PrintProductErrors.FAILED_TO_CREATE_PRODUCT_TYPE.value}: {str(e)}"
+            logger.error(f"Error creating product type: {str(e)}")
+
+        return result
+
+    @staticmethod
+    def update_print_product_type(type_id: int, description: str = None, image=None) -> Result:
+        """Update the description or image of a product type securely"""
+        result = Result()
+
+        try:
+            product_type = db.session.get(PrintProductType, type_id)
+
+            if not product_type:
+                result.status = False
+                result.error = PrintProductErrors.PRINT_PRODUCT_TYPE_NOT_FOUND.value
+                return result
+
+            # Sanitize and validate description
+            if description:
+                description = escape(description.strip())
+                if len(description) > 1000:
+                    result.status = False
+                    result.error = PrintProductErrors.PRINT_PRODUCT_DESCRIPTION_TOO_LONG.value
+                    return result
+                product_type.description = description
+
+            # Handle image upload
+            if image is not None:
+                if isinstance(image, FileStorage):
+                    # Ensure file is not empty
+                    if image.filename == "":
+                        result.status = False
+                        result.error = PrintProductErrors.EMPTY_IMAGE_FILENAME.value
+                        return result
+
+                    content_type = image.content_type
+                    filename = image.filename
+                    file_data = image.read()
+
+                    # Upload file using current filestorage
+                    filestorage = current_app.extensions["filestorage"]
+                    image_url = filestorage.upload_file(file_data, filename, content_type)
+
+                    # Save URL in DB
+                    product_type.image = image_url
+                else:
+                    result.status = False
+                    result.error = PrintProductErrors.INVALID_IMAGE_FILE.value
+                    return result
+
+            db.session.commit()
+            result.data = {"message": PrintProductSuccessMessages.PRODUCT_TYPE_UPDATED_SUCCESSFULLY.value}
+
+        except Exception as e:
+            db.session.rollback()
+            result.status = False
+            result.error = f"{PrintProductErrors.FAILED_TO_UPDATE_PRODUCT_TYPE.value}: {str(e)}"
+
+        return result
+
+    @staticmethod
+    def delete_print_product_type(type_id: int) -> Result:
+        """Delete a print product type from the database."""
+        result = Result()
+
+        try:
+            product_type = db.session.get(PrintProductType, type_id)
+
+            if not product_type:
+                result.status = False
+                result.error = PrintProductErrors.PRINT_PRODUCT_TYPE_NOT_FOUND.value
+                return result
+
+            # Check if there are any products using this type
+            from server.models.print_product import PrintProduct
+            products_using_type = PrintProduct.query.filter_by(type_id=type_id).first()
+            
+            print(products_using_type)
+            if products_using_type:
+                result.status = False
+                result.error = PrintProductErrors.PRODUCT_TYPE_IN_USE.value
+                return result
+
+            # Delete the product type
+            db.session.delete(product_type)
+            db.session.commit()
+
+            result.data = {"message": PrintProductSuccessMessages.PRODUCT_TYPE_DELETED_SUCCESSFULLY.value}
+            result.status = True
+
+        except Exception as e:
+            db.session.rollback()
+            result.status = False
+            result.error = f"{PrintProductErrors.FAILED_TO_DELETE_PRODUCT_TYPE.value}: {str(e)}"
+            logger.error(f"Error deleting product type: {str(e)}")
 
         return result

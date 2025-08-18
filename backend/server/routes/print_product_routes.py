@@ -26,6 +26,30 @@ category_model = api.model("ProductCategory", {
     "updated_at": fields.DateTime(description="Updated timestamp"),
 })
 
+# Define product type response model
+product_type_model = api.model("ProductType", {
+    "id": fields.Integer(description="Product Type ID"),
+    "name": fields.String(description="Product Type name"),
+    "category_id": fields.Integer(description="Category ID this type belongs to"),
+    "description": fields.String(description="Product Type description"),
+    "image": fields.String(description="Product Type image URL"),
+    "created_at": fields.DateTime(description="Created timestamp"),
+    "updated_at": fields.DateTime(description="Updated timestamp"),
+})
+
+# Define product response model
+product_model_v2 = api.model("Product V2", {
+    "id": fields.Integer(description="Product ID"),
+    "name": fields.String(description="Product name"),
+    "sku": fields.String(description="Stock Keeping Unit"),
+    "category_id": fields.Integer(description="Category ID this product belongs to"),
+    "type_id": fields.Integer(description="Product Type ID this product belongs to"),
+    "description": fields.String(description="Product description"),
+    "image": fields.String(description="Product image URL"),
+    "created_at": fields.DateTime(description="Created timestamp"),
+    "updated_at": fields.DateTime(description="Updated timestamp"),
+})
+
 
 @api.route("/products")
 class PrintProductResource(Resource):
