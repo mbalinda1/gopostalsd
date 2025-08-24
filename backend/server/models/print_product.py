@@ -9,6 +9,12 @@ class PrintProductCategory(db.Model):
     description = db.Column(db.Text, nullable=True) 
     image = db.Column(db.String(512), nullable=True)  
     enabled = db.Column(db.Boolean, default=False, nullable=False)
+    product_classification_status = db.Column(db.JSON, default={
+        "all_classified": True,
+        "total_products": 0,
+        "classified_products": 0,
+        "unclassified_products": 0
+    }, nullable=False)
     created_at = db.Column(db.DateTime(timezone=True), default=db.func.now(), nullable=False)
     updated_at = db.Column(db.DateTime(timezone=True), default=db.func.now(), onupdate=db.func.now(), nullable=False)
 
@@ -20,6 +26,7 @@ class PrintProductCategory(db.Model):
             "description": self.description,
             "image": self.image,
             "enabled": self.enabled,
+            "product_classification_status": self.product_classification_status,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

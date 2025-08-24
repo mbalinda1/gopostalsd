@@ -69,13 +69,13 @@ class PrintProductResource(Resource):
         
 @api.route("/categories/all")
 class PrintProductCategoriesResource(Resource):
-    """Ressource to fetch all product categories"""
+    """Resource to fetch all product categories with classification status"""
 
-    @api.doc(description="Fetch all product categories")
+    @api.doc(description="Fetch all product categories with their classification status")
     @api.marshal_list_with(category_model, code=200)
     def get(self):
-        """ Retrieve all product categories"""
-        result = PrintProductController.get_all_product_categories()
+        """ Retrieve all product categories with classification status"""
+        result = PrintProductController.get_all_product_categories_with_status()
 
         if result.status:
             return result.data, 200
@@ -182,16 +182,22 @@ class PrintProductCategoryUpdateResource(Resource):
         image = args.get("image")
 
         if not description and not image:
-            return {"error": "At least one field (description or image) must be provided"}, 400
+            return {"error": "At least one field (description or image) must be provided"}, 400, {"Content-Type": "application/json"}
         
         result = PrintProductController.update_print_product_category(category_id, description, image)
 
         if result.status:
             return result.data, 200
         else:
-            return {"error": result.error}, 400
+            return {"error": result.error}, 400, {"Content-Type": "application/json"}
 
 # Product Type endpoints
+create_product_type_parser = reqparse.RequestParser()
+create_product_type_parser.add_argument("name", type=str, location="form", required=True, help="Product type name")
+create_product_type_parser.add_argument("category_id", type=int, location="form", required=True, help="Category ID this type belongs to")
+create_product_type_parser.add_argument("description", type=str, location="form", required=True, help="Product type description")
+create_product_type_parser.add_argument("image", type=str, location="form", required=False, help="Product type image URL")
+
 @api.route("/product-types")
 class PrintProductTypesResource(Resource):
     """Resource for fetching all product types"""
@@ -209,26 +215,27 @@ class PrintProductTypesResource(Resource):
             return {"error": result.error}, 500
 
     @api.doc(description="Create a new product type")
-    @api.expect(api.model("CreateProductType", {
-        "name": fields.String(required=True, description="Product type name"),
-        "category_id": fields.Integer(required=True, description="Category ID this type belongs to"),
-        "description": fields.String(required=True, description="Product type description"),
-        "image": fields.String(required=False, description="Product type image URL")
-    }))
+    @api.expect(create_product_type_parser)
     @api.response(201, "Product type created successfully")
     @api.response(400, "Bad request")
     @api.response(500, "Server error")
     def post(self):
         """Create a new product type"""
-        from flask import request
+        args = create_product_type_parser.parse_args()
         
-        data = request.get_json()
+        data = {
+            "name": args.get("name"),
+            "category_id": args.get("category_id"),
+            "description": args.get("description"),
+            "image": args.get("image")
+        }
+        
         result = PrintProductController.create_print_product_type(data)
 
         if result.status:
             return result.data, 201
         else:
-            return {"error": result.error}, 400
+            return {"error": result.error}, 400, {"Content-Type": "application/json"}
 
 update_product_type_parser = reqparse.RequestParser()
 update_product_type_parser.add_argument("description", type=str, location="form", required=False, help="New description for the product type")
@@ -251,14 +258,14 @@ class PrintProductTypeUpdateResource(Resource):
         image = args.get("image")
 
         if not description and not image:
-            return {"error": "At least one field (description or image) must be provided"}, 400
+            return {"error": "At least one field (description or image) must be provided"}, 400, {"Content-Type": "application/json"}
         
         result = PrintProductController.update_print_product_type(type_id, description, image)
 
         if result.status:
             return result.data, 200
         else:
-            return {"error": result.error}, 400
+            return {"error": result.error}, 400, {"Content-Type": "application/json"}
 
 @api.route("/product-types/<int:type_id>/delete")
 class PrintProductTypeDeleteResource(Resource):
@@ -277,8 +284,106 @@ class PrintProductTypeDeleteResource(Resource):
             return result.data, 200
         else:
             if "not found" in result.error.lower():
-                return {"error": result.error}, 404
+                return {"error": result.error}, 404, {"Content-Type": "application/json"}
             elif "in use" in result.error.lower():
-                return {"error": result.error}, 400
+                return {"error": result.error}, 400, {"Content-Type": "application/json"}
             else:
-                return {"error": result.error}, 500
+                return {"error": result.error}, 500, {"Content-Type": "application/json"}
+
+# Product classification endpoints
+assign_type_parser = reqparse.RequestParser()
+assign_type_parser.add_argument("type_id", type=int, location="json", required=True, help="Product Type ID to assign")
+
+@api.route("/products/<int:product_id>/assign-type")
+class PrintProductAssignTypeResource(Resource):
+    """Resource for assigning a product to a product type"""
+
+    @api.doc(description="Assign a product to a product type")
+    @api.expect(assign_type_parser)
+    @api.response(200, "Product assigned successfully")
+    @api.response(400, "Bad request")
+    @api.response(404, "Product or product type not found")
+    @api.response(500, "Server error")
+    def put(self, product_id):
+        """Assign product to product type"""
+        args = assign_type_parser.parse_args()
+        type_id = args.get("type_id")
+        
+        if not type_id:
+            return {"error": "type_id is required"}, 400, {"Content-Type": "application/json"}
+        
+        result = PrintProductController.assign_product_to_type(product_id, type_id)
+        print(result.data)
+
+        if result.status:
+            return result.data, 200
+        else:
+            if "not found" in result.error.lower():
+                return {"error": result.error}, 404, {"Content-Type": "application/json"}
+            else:
+                return {"error": result.error}, 400, {"Content-Type": "application/json"}
+
+@api.route("/products/<int:product_id>/unassign-type")
+class PrintProductUnassignTypeResource(Resource):
+    """Resource for unassigning a product from its product type"""
+
+    @api.doc(description="Unassign a product from its product type")
+    @api.response(200, "Product unassigned successfully")
+    @api.response(404, "Product not found")
+    @api.response(500, "Server error")
+    def put(self, product_id):
+        """Unassign product from product type"""
+        result = PrintProductController.unassign_product_from_type(product_id)
+
+        if result.status:
+            return result.data, 200
+        else:
+            if "not found" in result.error.lower():
+                return {"error": result.error}, 404, {"Content-Type": "application/json"}
+            else:
+                return {"error": result.error}, 500, {"Content-Type": "application/json"}
+
+@api.route("/products/<int:product_id>/update")
+class PrintProductUpdateResource(Resource):
+    """Resource for updating a product's description or image"""
+
+    @api.doc(description="Update the description or image of a product")
+    @api.expect(update_category_parser)  # Reusing the same parser structure
+    @api.response(200, "Product updated successfully")
+    @api.response(400, "Bad request")
+    @api.response(404, "Product not found")
+    @api.response(500, "Server error")
+    def put(self, product_id):
+        """Update product description and/or image"""
+        args = update_category_parser.parse_args()
+        description = args.get("description")
+        image = args.get("image")
+
+        if not description and not image:
+            return {"error": "At least one field (description or image) must be provided"}, 400, {"Content-Type": "application/json"}
+        
+        result = PrintProductController.update_print_product(product_id, description, image)
+
+        if result.status:
+            return result.data, 200
+        else:
+            if "not found" in result.error.lower():
+                return {"error": result.error}, 404, {"Content-Type": "application/json"}
+            else:
+                return {"error": result.error}, 400, {"Content-Type": "application/json"}
+
+@api.route("/categories/<int:category_id>/classification-status")
+class PrintProductCategoryClassificationStatusResource(Resource):
+    """Resource for checking if all products in a category are classified"""
+
+    @api.doc(description="Check if all products in a category are classified to product types")
+    @api.response(200, "Classification status retrieved successfully")
+    @api.response(500, "Server error")
+    def get(self, category_id):
+        """Check product classification status for a category"""
+        result = PrintProductController.are_all_products_classified(category_id)
+
+        if result.status:
+            return result.data, 200
+        else:
+            return {"error": result.error}, 500
