@@ -34,6 +34,7 @@ import {
   ArrowBack as ArrowBackIcon,
   Save as SaveIcon,
   Cancel as CancelIcon,
+  Sync as SyncIcon,
 } from "@mui/icons-material";
 import {
   fetchAllProductTypes,
@@ -45,9 +46,11 @@ import {
   unassignProductFromType,
   updatePrintProductDetails,
   checkCategoryClassificationStatus,
+  syncProductsForCategory,
 } from "../../../services/product_service";
 import SpinnerOverlay from "../../../components/SpinnerOverlay";
 import logoImage from "../../../assets/logo.png";
+import { CircularProgress } from "@mui/material";
 
 const ProductClassificationView = ({ category, onBack, onCategoryUpdate }) => {
   const [loading, setLoading] = useState(false);
@@ -336,6 +339,36 @@ const ProductClassificationView = ({ category, onBack, onCategoryUpdate }) => {
     ? products.filter(p => p.type_id === selectedProductType)
     : [];
 
+  const handleSyncProducts = async () => {
+    if (!confirm("Are you sure you want to sync products for this category? This will re-fetch and update all products from Sinalite API.")) {
+      return;
+    }
+    
+    try {
+      setLoading(true);
+      const syncResult = await syncProductsForCategory(category.id);
+      
+      // Show detailed sync results
+      const message = `Sync completed successfully!\n\n` +
+        `Products added: ${syncResult.products_added}\n` +
+        `Products updated: ${syncResult.products_updated}\n` +
+        `Total products: ${syncResult.total_products}`;
+      
+      alert(message);
+      
+      // Reload data to show updated products
+      await loadData();
+      if (onCategoryUpdate) onCategoryUpdate();
+      
+    } catch (error) {
+      console.error("Error syncing products:", error);
+      const errorMessage = error.response?.data?.error || error.message || "Failed to sync products";
+      alert(`Sync failed: ${errorMessage}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <Box sx={{ width: "100%", position: "relative" }}>
       <SpinnerOverlay loading={loading} />
@@ -381,6 +414,30 @@ const ProductClassificationView = ({ category, onBack, onCategoryUpdate }) => {
                 }}
               />
             )}
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={handleSyncProducts}
+              disabled={loading}
+              startIcon={loading ? <CircularProgress size={20} /> : <SyncIcon />}
+              sx={{
+                borderRadius: 2,
+                px: 2,
+                py: 0.5,
+                fontWeight: 500,
+                borderWidth: 1.5,
+                fontSize: "0.75rem",
+                textTransform: "none",
+                "&:hover": {
+                  borderWidth: 2,
+                  transform: "translateY(-1px)",
+                  boxShadow: 1,
+                },
+                transition: "all 0.2s ease-in-out",
+              }}
+            >
+              {loading ? "Syncing..." : "Sync Products"}
+            </Button>
           </Typography>
           
           {classificationStatus && !classificationStatus.all_classified && (

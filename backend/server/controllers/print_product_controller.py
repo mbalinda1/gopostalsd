@@ -45,6 +45,7 @@ class PrintProductSuccessMessages(Enum):
     PRODUCT_TYPE_CREATED_SUCCESSFULLY = "Product type created successfully"
     PRODUCT_TYPE_UPDATED_SUCCESSFULLY = "Product type updated successfully"
     PRODUCT_TYPE_DELETED_SUCCESSFULLY = "Product type deleted successfully"
+    PRINT_PRODUCTS_SYNCED_SUCCESSFULLY = "Print products synced successfully"
 
 class PrintProductController:
 
@@ -175,6 +176,94 @@ class PrintProductController:
         return result
 
     @staticmethod
+    def sync_print_products(category_id: int) -> Result:
+        """Sync print products from Sinalite API for a given category (manual trigger)."""
+        result = Result()
+        
+        try:
+            # Validate category exists
+            category = db.session.get(PrintProductCategory, category_id)
+            if not category:
+                result.status = False
+                result.error = PrintProductErrors.PRINT_PRODUCT_CATEGORY_NOT_FOUND.value
+                return result
+            
+            # Get products from Sinalite API for this category
+            sinalite_products = sinalite.get_products()
+            if not sinalite_products:
+                result.status = False
+                result.error = PrintProductErrors.FAILED_TO_FETCH_PRINT_PRODUCTS.value
+                return result
+            
+            # Filter products for this category
+            category_products = [
+                product for product in sinalite_products 
+                if product.get('category') == category.name
+            ]
+            
+            if not category_products:
+                result.data = {
+                    "message": "No products found in Sinalite for this category",
+                    "products_added": 0,
+                    "products_updated": 0,
+                    "total_products": 0
+                }
+                result.status = True
+                return result
+            
+            # Get existing products in our database for this category
+            existing_products = PrintProduct.query.filter_by(category_id=category_id).all()
+            existing_sku_map = {product.sku: product for product in existing_products}
+            
+            products_added = 0
+            products_updated = 0
+            
+            for sinalite_product in category_products:
+                sku = sinalite_product.get('sku')
+                if not sku:
+                    continue  # Skip products without SKU
+                
+                if sku in existing_sku_map:
+                    # Update existing product - only update name, keep existing description
+                    existing_product = existing_sku_map[sku]
+                    existing_product.name = sinalite_product.get('name', existing_product.name)
+                    # Note: We don't update description from Sinalite since they don't provide descriptions
+                    products_updated += 1
+                else:
+                    # Create new product - set description to None initially
+                    new_product = PrintProduct(
+                        name=sinalite_product.get('name', ''),
+                        sku=sku,
+                        description=None,  # Sinalite doesn't provide descriptions, user will define later
+                        category_id=category_id,
+                        type_id=0  # Default to unclassified
+                    )
+                    db.session.add(new_product)
+                    products_added += 1
+            
+            # Commit all changes
+            db.session.commit()
+            
+            # Update category classification status after sync
+            PrintProductController.update_category_classification_status(category_id)
+            
+            result.data = {
+                "message": PrintProductSuccessMessages.PRINT_PRODUCTS_SYNCED_SUCCESSFULLY.value,
+                "products_added": products_added,
+                "products_updated": products_updated,
+                "total_products": len(category_products)
+            }
+            result.status = True
+            
+        except Exception as e:
+            db.session.rollback()
+            result.status = False
+            result.error = f"Failed to sync print products: {str(e)}"
+            logger.error(f"Error syncing print products for category {category_id}: {str(e)}")
+        
+        return result
+
+    @staticmethod
     def get_all_products() -> Result:
         """Fetch print products from Sinalite"""
 
@@ -191,7 +280,7 @@ class PrintProductController:
     
     @staticmethod
     def get_all_products_by_category(category_id: int) -> Result:
-        """Fetch print products from Sinalite API by category ID, regardless of enabled status"""
+        """Fetch print products from database by category ID, regardless of enabled status"""
         result = Result()
 
         table_is_empty = (PrintProductCategory.query.first() is None) # TODO: Add test case
@@ -206,11 +295,11 @@ class PrintProductController:
             result.error = PrintProductErrors.PRINT_PRODUCT_CATEGORY_NOT_FOUND.value
             return result
 
-        # Fetch all products from sinalite
-        all_products = sinalite.get_products()
-
-        # Filter products by category name
-        filtered_products = [product for product in all_products if product['category'] == local_category.name]
+        # Fetch all products from database for this category
+        db_products = PrintProduct.query.filter_by(category_id=category_id).all()
+        
+        # Convert to dictionary format to maintain API compatibility
+        filtered_products = [product.to_dict() for product in db_products]
 
         # Always return a list even if empty
         result.data = filtered_products
@@ -221,6 +310,11 @@ class PrintProductController:
     def get_enabled_products_by_category(category_id: int) -> Result:
         """Fetch print products from Sinalite API by category ID, ensuring category is enabled in the database"""
         result = Result()
+
+        # Three conditions for a product to be considered enabled
+        # 1. The category must be enabled in the database
+        # 2. The product must be enabled in the Sinalite API
+        # 3. The product must be present in the database (You can look it up by sku)
 
         table_is_empty = (PrintProductCategory.query.first() is None) # TODO: Add test case
         if(table_is_empty):
@@ -237,8 +331,31 @@ class PrintProductController:
         # Fetch all products from sinalite
         all_products = sinalite.get_products()
 
-        # Filter products by category name
-        filtered_products = [product for product in all_products if product['category'] == local_category.name]
+        # Filter products by category name and enabled status first
+        category_products = [
+            product for product in all_products 
+            if product['category'] == local_category.name and product.get('enabled', 0) == 1
+        ]
+        
+        if not category_products:
+            result.data = []
+            return result
+        
+        # Extract all product IDs for batch database lookup
+        product_ids = [product['id'] for product in category_products]
+        
+        # Batch query: get all products with matching IDs in one database call
+        # Note: ID is the primary key, so it's automatically indexed for optimal performance
+        db_products = PrintProduct.query.filter(PrintProduct.id.in_(product_ids)).all()
+        
+        # Create a set of existing IDs for O(1) lookup
+        existing_ids = {product.id for product in db_products}
+        
+        # Filter products that exist in our database
+        filtered_products = [
+            product for product in category_products 
+            if product['id'] in existing_ids
+        ]
 
         # Always return a list even if empty
         result.data = filtered_products

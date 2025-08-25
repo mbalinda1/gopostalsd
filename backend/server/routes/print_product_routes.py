@@ -387,3 +387,23 @@ class PrintProductCategoryClassificationStatusResource(Resource):
             return result.data, 200
         else:
             return {"error": result.error}, 500
+
+@api.route("/categories/<int:category_id>/sync-products")
+class PrintProductSyncResource(Resource):
+    """Resource for syncing products from Sinalite API for a given category"""
+
+    @api.doc(description="Sync products from Sinalite API for a specific category")
+    @api.response(200, "Products synced successfully")
+    @api.response(404, "Category not found")
+    @api.response(500, "Server error")
+    def post(self, category_id):
+        """Sync products from Sinalite API for a category"""
+        result = PrintProductController.sync_print_products(category_id)
+
+        if result.status:
+            return result.data, 200
+        else:
+            if "not found" in result.error.lower():
+                return {"error": result.error}, 404, {"Content-Type": "application/json"}
+            else:
+                return {"error": result.error}, 500, {"Content-Type": "application/json"}

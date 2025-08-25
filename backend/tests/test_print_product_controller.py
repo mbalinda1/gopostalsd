@@ -76,6 +76,61 @@ def create_product_types(create_categories):
         category1
     )
 
+@pytest.fixture
+def create_products(create_categories):
+    """Create products in the database for testing"""
+    from server.models.print_product import PrintProduct
+    
+    category1, _, _ = create_categories
+    
+    # Create products with IDs that match what Sinalite API returns
+    product1 = PrintProduct(
+        name="Premium Business Cards",
+        sku="businesscard_14pt_premium",
+        description="High-quality business cards",
+        category_id=category1.id,
+        type_id=0  # Unclassified
+    )
+    product2 = PrintProduct(
+        name="Standard Business Cards", 
+        sku="businesscard_14pt_standard",
+        description="Standard business cards",
+        category_id=category1.id,
+        type_id=0  # Unclassified
+    )
+    product3 = PrintProduct(
+        name="Flyer Product",
+        sku="flyer_standard",
+        description="Standard flyer",
+        category_id=category1.id,  # Wrong category but exists in DB
+        type_id=0
+    )
+    
+    db.session.add_all([product1, product2, product3])
+    db.session.commit()
+    
+    # Get the products with their assigned IDs
+    db_product1 = db.session.get(PrintProduct, product1.id)
+    db_product2 = db.session.get(PrintProduct, product2.id)
+    db_product3 = db.session.get(PrintProduct, product3.id)
+    
+    return (
+        db_product1,
+        db_product2,
+        db_product3,
+        category1
+    )
+
+@pytest.fixture
+def clean_products():
+    """Clean up products table"""
+    from server.models.print_product import PrintProduct
+    PrintProduct.query.delete()
+    db.session.commit()
+    yield
+    PrintProduct.query.delete()
+    db.session.commit()
+
 # ========== EMPTY TABLE COVERAGE ==========
 
 def test_get_all_product_categories_empty_table(client, clean_categories):
@@ -106,7 +161,7 @@ def test_get_all_products_by_category_empty_table(client, clean_categories):
     assert result.data == []
     assert result.error is None
 
-def test_get_enabled_products_by_category_empty_table(client, clean_categories):
+def test_get_enabled_products_by_category_empty_table(client, clean_categories, clean_products):
     result = PrintProductController.get_enabled_products_by_category(1)
     assert isinstance(result, Result)
     assert result.status is True
@@ -147,19 +202,19 @@ def test_update_print_product_category_status(client, create_categories):
     assert result.status is False
     assert result.error == PrintProductErrors.PRINT_PRODUCT_CATEGORY_NOT_FOUND.value
 
-def test_get_all_products_by_category_success(client, create_categories):
+def test_get_all_products_by_category_success(client, create_products):
     """Test get_all_products_by_category with valid category ID"""
-    category1, _, _ = create_categories
+    product1, product2, _, category1 = create_products
     
-    with patch('server.config.sinalite.get_products', return_value=[
-        {"id": 1, "name": "Premium BC", "category": CATEGORY_BUSINESS_CARDS},
-        {"id": 2, "name": "Standard BC", "category": CATEGORY_BUSINESS_CARDS},
-        {"id": 3, "name": "Flyer", "category": CATEGORY_FLYERS}
-    ]):
-        result = PrintProductController.get_all_products_by_category(category1.id)
-        assert result.status is True
-        assert len(result.data) == 2
-        assert all(product["category"] == CATEGORY_BUSINESS_CARDS for product in result.data)
+    result = PrintProductController.get_all_products_by_category(category1.id)
+    assert result.status is True
+    assert len(result.data) == 3  # All 3 products are in this category
+    assert all(product["category_id"] == category1.id for product in result.data)
+    
+    # Verify the returned products match our database products
+    product_ids = [product["id"] for product in result.data]
+    assert product1.id in product_ids
+    assert product2.id in product_ids
 
 def test_get_all_products_by_category_not_found(client, create_categories):
     """Test get_all_products_by_category with non-existent category ID"""
@@ -168,19 +223,24 @@ def test_get_all_products_by_category_not_found(client, create_categories):
         assert result.status is False
         assert result.error == PrintProductErrors.PRINT_PRODUCT_CATEGORY_NOT_FOUND.value
 
-def test_get_enabled_products_by_category_success(client, create_categories):
-    """Test get_enabled_products_by_category with valid enabled category ID"""
-    category1, _, category3 = create_categories
+def test_get_enabled_products_by_category_success(client, create_products):
+    """Test get_enabled_products_by_category with valid enabled category ID and products in DB"""
+    product1, product2, _, category1 = create_products
     
     with patch('server.config.sinalite.get_products', return_value=[
-        {"id": 1, "name": "Premium BC", "category": CATEGORY_BUSINESS_CARDS},
-        {"id": 2, "name": "Standard BC", "category": CATEGORY_BUSINESS_CARDS},
-        {"id": 3, "name": "Poster", "category": CATEGORY_POSTERS}
+        {"id": product1.id, "sku": "businesscard_14pt_premium", "name": "Premium BC", "category": CATEGORY_BUSINESS_CARDS, "enabled": 1},
+        {"id": product2.id, "sku": "businesscard_14pt_standard", "name": "Standard BC", "category": CATEGORY_BUSINESS_CARDS, "enabled": 1},
+        {"id": 999, "sku": "poster_standard", "name": "Poster", "category": CATEGORY_POSTERS, "enabled": 1}
     ]):
         result = PrintProductController.get_enabled_products_by_category(category1.id)
         assert result.status is True
         assert len(result.data) == 2
         assert all(product["category"] == CATEGORY_BUSINESS_CARDS for product in result.data)
+        # Verify only products with matching IDs in DB are returned
+        ids = [product["id"] for product in result.data]
+        assert product1.id in ids
+        assert product2.id in ids
+        assert 999 not in ids  # Not in our DB
 
 def test_get_enabled_products_by_category_disabled_category(client, create_categories):
     """Test get_enabled_products_by_category with disabled category ID"""
@@ -201,28 +261,110 @@ def test_get_enabled_products_by_category_not_found(client, create_categories):
         assert result.error == PrintProductErrors.PRINT_PRODUCT_CATEGORY_NOT_FOUND.value
 
 def test_get_all_products_by_category_no_matching_products(client, create_categories):
-    """Test get_all_products_by_category when no products match the category"""
-    category1, _, _ = create_categories
+    """Test get_all_products_by_category when no products exist in the category"""
+    _, category2, _ = create_categories  # category2 has no products
     
-    with patch('server.config.sinalite.get_products', return_value=[
-        {"id": 1, "name": "Flyer", "category": CATEGORY_FLYERS},
-        {"id": 2, "name": "Poster", "category": CATEGORY_POSTERS}
-    ]):
-        result = PrintProductController.get_all_products_by_category(category1.id)
-        assert result.status is True
-        assert result.data == []
+    result = PrintProductController.get_all_products_by_category(category2.id)
+    assert result.status is True
+    assert result.data == []
 
-def test_get_enabled_products_by_category_no_matching_products(client, create_categories):
+def test_get_enabled_products_by_category_no_matching_products(client, create_products):
     """Test get_enabled_products_by_category when no products match the category"""
-    category1, _, _ = create_categories
+    _, _, _, category1 = create_products
     
     with patch('server.config.sinalite.get_products', return_value=[
-        {"id": 1, "name": "Flyer", "category": CATEGORY_FLYERS},
-        {"id": 2, "name": "Poster", "category": CATEGORY_POSTERS}
+        {"id": 1, "sku": "flyer_standard", "name": "Flyer", "category": CATEGORY_FLYERS, "enabled": 1},
+        {"id": 2, "sku": "poster_standard", "name": "Poster", "category": CATEGORY_POSTERS, "enabled": 1}
     ]):
         result = PrintProductController.get_enabled_products_by_category(category1.id)
         assert result.status is True
         assert result.data == []
+
+def test_get_enabled_products_by_category_sinalite_disabled_products(client, create_products):
+    """Test get_enabled_products_by_category filters out disabled products from Sinalite API"""
+    product1, product2, _, category1 = create_products
+    
+    with patch('server.config.sinalite.get_products', return_value=[
+        {"id": product1.id, "sku": "businesscard_14pt_premium", "name": "Premium BC", "category": CATEGORY_BUSINESS_CARDS, "enabled": 0},  # Disabled
+        {"id": product2.id, "sku": "businesscard_14pt_standard", "name": "Standard BC", "category": CATEGORY_BUSINESS_CARDS, "enabled": 1},  # Enabled
+        {"id": 888, "sku": "businesscard_14pt_extra", "name": "Extra BC", "category": CATEGORY_BUSINESS_CARDS, "enabled": 1}  # Enabled but not in DB
+    ]):
+        result = PrintProductController.get_enabled_products_by_category(category1.id)
+        assert result.status is True
+        assert len(result.data) == 1
+        assert result.data[0]["id"] == product2.id  # Only the enabled one in DB
+
+def test_get_enabled_products_by_category_missing_from_database(client, create_products):
+    """Test get_enabled_products_by_category filters out products not in our database"""
+    product1, product2, _, category1 = create_products
+    
+    with patch('server.config.sinalite.get_products', return_value=[
+        {"id": product1.id, "sku": "businesscard_14pt_premium", "name": "Premium BC", "category": CATEGORY_BUSINESS_CARDS, "enabled": 1},  # In DB
+        {"id": product2.id, "sku": "businesscard_14pt_standard", "name": "Standard BC", "category": CATEGORY_BUSINESS_CARDS, "enabled": 1},  # In DB
+        {"id": 777, "sku": "businesscard_14pt_new", "name": "New BC", "category": CATEGORY_BUSINESS_CARDS, "enabled": 1},  # Not in DB
+        {"id": 666, "sku": "businesscard_14pt_another", "name": "Another BC", "category": CATEGORY_BUSINESS_CARDS, "enabled": 1}  # Not in DB
+    ]):
+        result = PrintProductController.get_enabled_products_by_category(category1.id)
+        assert result.status is True
+        assert len(result.data) == 2
+        # Only products that exist in our database should be returned
+        ids = [product["id"] for product in result.data]
+        assert product1.id in ids
+        assert product2.id in ids
+        assert 777 not in ids
+        assert 666 not in ids
+
+def test_get_enabled_products_by_category_mixed_conditions(client, create_products):
+    """Test get_enabled_products_by_category with mixed conditions (enabled/disabled, in DB/not in DB)"""
+    product1, product2, product3, category1 = create_products
+    
+    with patch('server.config.sinalite.get_products', return_value=[
+        # Should be included: enabled + in DB + correct category
+        {"id": product1.id, "sku": "businesscard_14pt_premium", "name": "Premium BC", "category": CATEGORY_BUSINESS_CARDS, "enabled": 1},
+        # Should be excluded: disabled + in DB + correct category
+        {"id": product2.id, "sku": "businesscard_14pt_standard", "name": "Standard BC", "category": CATEGORY_BUSINESS_CARDS, "enabled": 0},
+        # Should be excluded: enabled + not in DB + correct category
+        {"id": 555, "sku": "businesscard_14pt_new", "name": "New BC", "category": CATEGORY_BUSINESS_CARDS, "enabled": 1},
+        # Should be excluded: enabled + in DB + wrong category
+        {"id": product3.id, "sku": "flyer_standard", "name": "Flyer", "category": CATEGORY_FLYERS, "enabled": 1},
+        # Should be excluded: disabled + not in DB + wrong category
+        {"id": 444, "sku": "poster_standard", "name": "Poster", "category": CATEGORY_POSTERS, "enabled": 0}
+    ]):
+        result = PrintProductController.get_enabled_products_by_category(category1.id)
+        assert result.status is True
+        assert len(result.data) == 1
+        assert result.data[0]["id"] == product1.id
+
+def test_get_enabled_products_by_category_batch_query_performance(client, create_products):
+    """Test get_enabled_products_by_category with many products to verify batch query optimization"""
+    product1, product2, _, category1 = create_products
+    
+    # Create a large number of products from Sinalite API
+    sinalite_products = []
+    for i in range(100):  # 100 products
+        sinalite_products.append({
+            "id": i + 1000,  # Use high IDs to avoid conflicts
+            "sku": f"businesscard_14pt_product_{i}",
+            "name": f"Product {i}",
+            "category": CATEGORY_BUSINESS_CARDS,
+            "enabled": 1 if i % 2 == 0 else 0  # Alternate enabled/disabled
+        })
+    
+    # Add our existing products to the mix
+    sinalite_products.extend([
+        {"id": product1.id, "sku": "businesscard_14pt_premium", "name": "Premium BC", "category": CATEGORY_BUSINESS_CARDS, "enabled": 1},
+        {"id": product2.id, "sku": "businesscard_14pt_standard", "name": "Standard BC", "category": CATEGORY_BUSINESS_CARDS, "enabled": 1},
+        {"id": 2000, "sku": "businesscard_14pt_extra", "name": "Extra BC", "category": CATEGORY_BUSINESS_CARDS, "enabled": 1}
+    ])
+    
+    with patch('server.config.sinalite.get_products', return_value=sinalite_products):
+        result = PrintProductController.get_enabled_products_by_category(category1.id)
+        assert result.status is True
+        # Should return only the 2 products that exist in our database and are enabled
+        assert len(result.data) == 2
+        ids = [product["id"] for product in result.data]
+        assert product1.id in ids
+        assert product2.id in ids
 
 # ========== SYNC ==========
 
@@ -806,3 +948,175 @@ def test_delete_print_product_type_commit_fails(client, create_product_types):
         
         assert result.status is False
         assert PrintProductErrors.FAILED_TO_DELETE_PRODUCT_TYPE.value in result.error
+
+# ========== SYNC PRINT PRODUCTS ==========
+
+def test_sync_print_products_success_new_products(client, create_categories):
+    """Test successful sync of new products from Sinalite API"""
+    category1, _, _ = create_categories
+    
+    with patch('server.config.sinalite.get_products', return_value=[
+        {"id": 1, "sku": "businesscard_14pt_premium", "name": "Premium BC", "category": CATEGORY_BUSINESS_CARDS, "enabled": 1},
+        {"id": 2, "sku": "businesscard_14pt_standard", "name": "Standard BC", "category": CATEGORY_BUSINESS_CARDS, "enabled": 1},
+        {"id": 3, "sku": "poster_standard", "name": "Poster", "category": CATEGORY_POSTERS, "enabled": 1}
+    ]):
+        result = PrintProductController.sync_print_products(category1.id)
+        
+        assert result.status is True
+        assert result.data["message"] == PrintProductSuccessMessages.PRINT_PRODUCTS_SYNCED_SUCCESSFULLY.value
+        assert result.data["products_added"] == 2  # Only business cards
+        assert result.data["products_updated"] == 0
+        assert result.data["total_products"] == 2
+        
+        # Verify products were created in database
+        from server.models.print_product import PrintProduct
+        db_products = PrintProduct.query.filter_by(category_id=category1.id).all()
+        assert len(db_products) == 2
+        assert any(p.sku == "businesscard_14pt_premium" for p in db_products)
+        assert any(p.sku == "businesscard_14pt_standard" for p in db_products)
+
+def test_sync_print_products_success_update_existing(client, create_products):
+    """Test successful sync with existing products being updated"""
+    product1, product2, _, category1 = create_products
+    
+    # Set initial descriptions
+    product1.description = "Original description 1"
+    product2.description = "Original description 2"
+    db.session.commit()
+    
+    with patch('server.config.sinalite.get_products', return_value=[
+        {"id": 1, "sku": product1.sku, "name": "Updated Premium BC", "category": CATEGORY_BUSINESS_CARDS, "enabled": 1},
+        {"id": 2, "sku": product2.sku, "name": "Updated Standard BC", "category": CATEGORY_BUSINESS_CARDS, "enabled": 1},
+        {"id": 3, "sku": "new_product", "name": "New Product", "category": CATEGORY_BUSINESS_CARDS, "enabled": 1}
+    ]):
+        result = PrintProductController.sync_print_products(category1.id)
+        
+        assert result.status is True
+        assert result.data["products_added"] == 1  # New product
+        assert result.data["products_updated"] == 2  # Existing products updated
+        assert result.data["total_products"] == 3
+        
+        # Verify existing products were updated - only names, descriptions preserved
+        from server.models.print_product import PrintProduct
+        updated_product1 = PrintProduct.query.get(product1.id)
+        updated_product2 = PrintProduct.query.get(product2.id)
+        assert updated_product1.name == "Updated Premium BC"
+        assert updated_product2.name == "Updated Standard BC"
+        assert updated_product1.description == "Original description 1"  # Description preserved
+        assert updated_product2.description == "Original description 2"  # Description preserved
+
+def test_sync_print_products_category_not_found(client):
+    """Test sync fails when category doesn't exist"""
+    result = PrintProductController.sync_print_products(9999)
+    
+    assert result.status is False
+    assert result.error == PrintProductErrors.PRINT_PRODUCT_CATEGORY_NOT_FOUND.value
+
+def test_sync_print_products_sinalite_api_failure(client, create_categories):
+    """Test sync fails when Sinalite API returns no products"""
+    category1, _, _ = create_categories
+    
+    with patch('server.config.sinalite.get_products', return_value=[]):
+        result = PrintProductController.sync_print_products(category1.id)
+        
+        assert result.status is False
+        assert result.error == PrintProductErrors.FAILED_TO_FETCH_PRINT_PRODUCTS.value
+
+def test_sync_print_products_no_matching_category(client, create_categories):
+    """Test sync succeeds but returns no products when category doesn't match"""
+    category1, _, _ = create_categories
+    
+    with patch('server.config.sinalite.get_products', return_value=[
+        {"id": 1, "sku": "poster_standard", "name": "Poster", "category": CATEGORY_POSTERS, "enabled": 1},
+        {"id": 2, "sku": "flyer_standard", "name": "Flyer", "category": CATEGORY_FLYERS, "enabled": 1}
+    ]):
+        result = PrintProductController.sync_print_products(category1.id)
+        
+        assert result.status is True
+        assert result.data["message"] == "No products found in Sinalite for this category"
+        assert result.data["products_added"] == 0
+        assert result.data["products_updated"] == 0
+        assert result.data["total_products"] == 0
+
+def test_sync_print_products_skip_invalid_sku(client, create_categories):
+    """Test sync skips products without SKU"""
+    category1, _, _ = create_categories
+    
+    with patch('server.config.sinalite.get_products', return_value=[
+        {"id": 1, "sku": "businesscard_14pt_premium", "name": "Premium BC", "category": CATEGORY_BUSINESS_CARDS, "enabled": 1},
+        {"id": 2, "sku": "", "name": "Invalid Product", "category": CATEGORY_BUSINESS_CARDS, "enabled": 1},  # Empty SKU
+        {"id": 3, "name": "No SKU Product", "category": CATEGORY_BUSINESS_CARDS, "enabled": 1}  # Missing SKU
+    ]):
+        result = PrintProductController.sync_print_products(category1.id)
+        
+        assert result.status is True
+        assert result.data["products_added"] == 1  # Only the valid product
+        assert result.data["products_updated"] == 0
+        assert result.data["total_products"] == 1
+
+def test_sync_print_products_database_error_handling(client, create_categories):
+    """Test sync handles database errors gracefully"""
+    category1, _, _ = create_categories
+    
+    with patch('server.config.sinalite.get_products', return_value=[
+        {"id": 1, "sku": "businesscard_14pt_premium", "name": "Premium BC", "category": CATEGORY_BUSINESS_CARDS, "enabled": 1}
+    ]), patch('server.controllers.print_product_controller.db.session.commit', side_effect=Exception("Database error")):
+        result = PrintProductController.sync_print_products(category1.id)
+        
+        assert result.status is False
+        assert "Failed to sync print products: Database error" in result.error
+
+def test_sync_print_products_updates_classification_status(client, create_categories):
+    """Test sync updates category classification status after completion"""
+    category1, _, _ = create_categories
+    
+    with patch('server.config.sinalite.get_products', return_value=[
+        {"id": 1, "sku": "businesscard_14pt_premium", "name": "Premium BC", "category": CATEGORY_BUSINESS_CARDS, "enabled": 1}
+    ]), patch('server.controllers.print_product_controller.PrintProductController.update_category_classification_status') as mock_update:
+        result = PrintProductController.sync_print_products(category1.id)
+        
+        assert result.status is True
+        mock_update.assert_called_once_with(category1.id)
+
+def test_sync_print_products_mixed_add_and_update(client, create_products):
+    """Test sync handles mixed scenario of adding new and updating existing products"""
+    product1, _, _, category1 = create_products
+    
+    with patch('server.config.sinalite.get_products', return_value=[
+        {"id": 1, "sku": product1.sku, "name": "Updated Name", "category": CATEGORY_BUSINESS_CARDS, "enabled": 1},  # Update existing
+        {"id": 2, "sku": "new_product", "name": "New Product", "category": CATEGORY_BUSINESS_CARDS, "enabled": 1},  # Add new
+        {"id": 3, "sku": "another_new", "name": "Another New", "category": CATEGORY_BUSINESS_CARDS, "enabled": 1}  # Add new
+    ]):
+        result = PrintProductController.sync_print_products(category1.id)
+        
+        assert result.status is True
+        assert result.data["products_added"] == 2
+        assert result.data["products_updated"] == 1
+        assert result.data["total_products"] == 3
+
+def test_sync_print_products_new_products_have_null_description(client, create_categories):
+    """Test that new products created during sync have description set to None"""
+    category1, _, _ = create_categories
+    
+    with patch('server.config.sinalite.get_products', return_value=[
+        {"id": 1, "sku": "new_product_1", "name": "New Product 1", "category": CATEGORY_BUSINESS_CARDS, "enabled": 1},
+        {"id": 2, "sku": "new_product_2", "name": "New Product 2", "category": CATEGORY_BUSINESS_CARDS, "enabled": 1}
+    ]):
+        result = PrintProductController.sync_print_products(category1.id)
+        
+        assert result.status is True
+        assert result.data["products_added"] == 2
+        assert result.data["products_updated"] == 0
+        assert result.data["total_products"] == 2
+        
+        # Verify new products were created with description=None
+        from server.models.print_product import PrintProduct
+        new_product1 = PrintProduct.query.filter_by(sku="new_product_1").first()
+        new_product2 = PrintProduct.query.filter_by(sku="new_product_2").first()
+        
+        assert new_product1 is not None
+        assert new_product2 is not None
+        assert new_product1.description is None  # Description should be None for new products
+        assert new_product2.description is None  # Description should be None for new products
+        assert new_product1.name == "New Product 1"
+        assert new_product2.name == "New Product 2"

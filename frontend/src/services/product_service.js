@@ -233,3 +233,17 @@ export const checkCategoryClassificationStatus = async (categoryId) => {
     throw error;
   }
 };
+
+export const syncProductsForCategory = async (categoryId) => {
+  try {
+    const response = await axios.post(`${API_BASE_URL}/print/categories/${categoryId}/sync-products`);
+    return response.data;
+  } catch (error) {
+    console.error("Error syncing products for category: ", error);
+    if (error.response) {
+      console.error("Error response status:", error.response.status);
+      console.error("Error response data:", error.response.data);
+    }
+    throw error;
+  }
+};
