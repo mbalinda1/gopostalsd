@@ -2,10 +2,14 @@ from server.controllers import Result
 from enum import Enum
 from server.config import sinalite
 from server.config import database as db
-from server.models.print_product import PrintProductCategory
+from server.models.print_product import PrintProductCategory, PrintProductType, PrintProduct
 from markupsafe import escape
 import logging
+import os
+import uuid
+from datetime import datetime
 from werkzeug.datastructures import FileStorage
+from werkzeug.utils import secure_filename
 from flask import current_app
 
 logger = logging.getLogger(__name__)
@@ -21,10 +25,31 @@ class PrintProductErrors(Enum):
     EMPTY_IMAGE_FILENAME = "Empty image filename"
     INVALID_IMAGE_URL = "Invalid image URL. Must start with http:// or https://"
     
+    # Product Type specific errors
+    PRINT_PRODUCT_TYPE_NOT_FOUND = "Print product type not found"
+    FAILED_TO_CREATE_PRODUCT_TYPE = "Failed to create product type"
+    FAILED_TO_UPDATE_PRODUCT_TYPE = "Failed to update product type"
+    FAILED_TO_DELETE_PRODUCT_TYPE = "Failed to delete product type"
+    PRODUCT_TYPE_NAME_REQUIRED = "Product type name is required"
+    PRODUCT_TYPE_CATEGORY_ID_REQUIRED = "Product type category ID is required"
+    PRODUCT_TYPE_DESCRIPTION_REQUIRED = "Product type description is required"
+    PRODUCT_TYPE_CATEGORY_NOT_FOUND = "Product type category not found"
+    PRODUCT_TYPE_NAME_ALREADY_EXISTS = "Product type name already exists in this category"
+    PRODUCT_TYPE_IN_USE = "Cannot delete product type: It is being used by existing products"
+    PRODUCT_TYPE_NAME_TOO_LONG = "Product type name is too long (max 255 characters)"
+    PRODUCT_TYPE_NAME_TOO_SHORT = "Product type name is too short (min 2 characters)"
+    FAILED_TO_FETCH_PRINT_PRODUCT_TYPES = "Failed to fetch print product types"
+    
 class PrintProductSuccessMessages(Enum):
     UPDATED_PRINT_PRODUCT_CATEGORY_STATUS_SUCCESSFULLY = "Updated print product category status successfully"
     PRINT_PRODUCT_CATEGORY_IN_SYNC = "Print products are in sync"
     PRODUCT_CATEGORY_UPDATED_SUCCESSFULLY = "Product category updated successfully"
+    
+    # Product Type specific success messages
+    PRODUCT_TYPE_CREATED_SUCCESSFULLY = "Product type created successfully"
+    PRODUCT_TYPE_UPDATED_SUCCESSFULLY = "Product type updated successfully"
+    PRODUCT_TYPE_DELETED_SUCCESSFULLY = "Product type deleted successfully"
+    PRINT_PRODUCTS_SYNCED_SUCCESSFULLY = "Print products synced successfully"
 
 class PrintProductController:
 
@@ -155,6 +180,134 @@ class PrintProductController:
         return result
 
     @staticmethod
+    def get_all_vendors() -> Result:
+        """Retrieve all vendors from the database."""
+        result = Result()
+
+        try:
+            from server.models.print_product import Vendor
+            
+            # Check if table is empty
+            table_is_empty = (Vendor.query.first() is None)
+            if table_is_empty:
+                result.data = []
+                result.status = True
+                return result
+
+            # Fetch all vendors sorted by name
+            vendors = Vendor.query.order_by(Vendor.name.asc()).all()
+
+            if vendors:
+                result.data = [vendor.to_dict() for vendor in vendors]
+                result.status = True
+            else:
+                result.status = False
+                result.error = "Failed to fetch vendors"
+            
+        except Exception as e:
+            result.status = False
+            result.error = f"Failed to fetch vendors: {str(e)}"
+            logger.error(f"Error fetching vendors: {str(e)}")
+
+        return result
+
+    @staticmethod
+    def sync_print_products(category_id: int) -> Result:
+        """Sync print products from Sinalite API for a given category (manual trigger)."""
+        result = Result()
+        
+        try:
+            # Validate category exists
+            category = db.session.get(PrintProductCategory, category_id)
+            if not category:
+                result.status = False
+                result.error = PrintProductErrors.PRINT_PRODUCT_CATEGORY_NOT_FOUND.value
+                return result
+            
+            # Get products from Sinalite API for this category
+            sinalite_products = sinalite.get_products()
+            if not sinalite_products:
+                result.status = False
+                result.error = PrintProductErrors.FAILED_TO_FETCH_PRINT_PRODUCTS.value
+                return result
+            
+            # Filter products for this category
+            category_products = [
+                product for product in sinalite_products 
+                if product.get('category') == category.name
+            ]
+            
+            if not category_products:
+                result.data = {
+                    "message": "No products found in Sinalite for this category",
+                    "products_added": 0,
+                    "products_updated": 0,
+                    "total_products": 0
+                }
+                result.status = True
+                return result
+            
+            # Get existing products in our database for this category
+            existing_products = PrintProduct.query.filter_by(category_id=category_id).all()
+            existing_sku_map = {product.sku: product for product in existing_products}
+            
+            # Sinalite vendor ID is 1 (as defined in the migration)
+            SINALITE_VENDOR_ID = 1
+            
+            products_added = 0
+            products_updated = 0
+            
+            for sinalite_product in category_products:
+                sku = sinalite_product.get('sku')
+                if not sku:
+                    continue  # Skip products without SKU
+                
+                if sku in existing_sku_map:
+                    # Update existing product - only update name, keep existing description
+                    existing_product = existing_sku_map[sku]
+                    existing_product.name = sinalite_product.get('name', existing_product.name)
+                    # Note: We don't update description from Sinalite since they don't provide descriptions
+                    # Update vendor_product_id if it changed
+                    if existing_product.vendor_product_id != str(sinalite_product.get('id')):
+                        existing_product.vendor_product_id = str(sinalite_product.get('id'))
+                    products_updated += 1
+                else:
+                    # Create new product - set description to None initially
+                    new_product = PrintProduct(
+                        name=sinalite_product.get('name', ''),
+                        sku=sku,
+                        description=None,  # Sinalite doesn't provide descriptions, user will define later
+                        category_id=category_id,
+                        type_id=0,  # Default to unclassified
+                        vendor_id=SINALITE_VENDOR_ID,  # Sinalite vendor
+                        vendor_product_id=str(sinalite_product.get('id'))  # Sinalite's product ID
+                    )
+                    db.session.add(new_product)
+                    products_added += 1
+            
+            # Commit all changes
+            db.session.commit()
+            
+            # Update category classification status after sync
+            PrintProductController.update_category_classification_status(category_id)
+            
+            result.data = {
+                "message": PrintProductSuccessMessages.PRINT_PRODUCTS_SYNCED_SUCCESSFULLY.value,
+                "products_added": products_added,
+                "products_updated": products_updated,
+                "total_products": len(category_products)
+            }
+            result.status = True
+            
+        except Exception as e:
+            db.session.rollback()
+            result.status = False
+            result.error = f"Failed to sync print products: {str(e)}"
+            logger.error(f"Error syncing print products for category {category_id}: {str(e)}")
+        
+        return result
+
+    @staticmethod
     def get_all_products() -> Result:
         """Fetch print products from Sinalite"""
 
@@ -171,7 +324,7 @@ class PrintProductController:
     
     @staticmethod
     def get_all_products_by_category(category_id: int) -> Result:
-        """Fetch print products from Sinalite API by category ID, regardless of enabled status"""
+        """Fetch print products from database by category ID, regardless of enabled status"""
         result = Result()
 
         table_is_empty = (PrintProductCategory.query.first() is None) # TODO: Add test case
@@ -186,11 +339,18 @@ class PrintProductController:
             result.error = PrintProductErrors.PRINT_PRODUCT_CATEGORY_NOT_FOUND.value
             return result
 
-        # Fetch all products from sinalite
-        all_products = sinalite.get_products()
+        # Get products for this category
+        db_products = PrintProduct.query.filter_by(category_id=category_id).all()
+        print(f"DEBUG: Found {len(db_products)} products for category {category_id}")
+        
+        # Log each product's type_id
+        for product in db_products:
+            print(f"DEBUG: Product {product.id} ({product.name}) has type_id: {product.type_id}")
+        
+        # Convert to dictionary format to maintain API compatibility
+        filtered_products = [product.to_dict() for product in db_products]
 
-        # Filter products by category name
-        filtered_products = [product for product in all_products if product['category'] == local_category.name]
+        print(f"DEBUG: Filtered products: {filtered_products}")
 
         # Always return a list even if empty
         result.data = filtered_products
@@ -201,6 +361,11 @@ class PrintProductController:
     def get_enabled_products_by_category(category_id: int) -> Result:
         """Fetch print products from Sinalite API by category ID, ensuring category is enabled in the database"""
         result = Result()
+
+        # Three conditions for a product to be considered enabled
+        # 1. The category must be enabled in the database
+        # 2. The product must be enabled in the Sinalite API
+        # 3. The product must be present in the database (You can look it up by sku)
 
         table_is_empty = (PrintProductCategory.query.first() is None) # TODO: Add test case
         if(table_is_empty):
@@ -217,8 +382,31 @@ class PrintProductController:
         # Fetch all products from sinalite
         all_products = sinalite.get_products()
 
-        # Filter products by category name
-        filtered_products = [product for product in all_products if product['category'] == local_category.name]
+        # Filter products by category name and enabled status first
+        category_products = [
+            product for product in all_products 
+            if product['category'] == local_category.name and product.get('enabled', 0) == 1
+        ]
+        
+        if not category_products:
+            result.data = []
+            return result
+        
+        # Extract all product IDs for batch database lookup
+        product_ids = [product['id'] for product in category_products]
+        
+        # Batch query: get all products with matching IDs in one database call
+        # Note: ID is the primary key, so it's automatically indexed for optimal performance
+        db_products = PrintProduct.query.filter(PrintProduct.id.in_(product_ids)).all()
+        
+        # Create a set of existing IDs for O(1) lookup
+        existing_ids = {product.id for product in db_products}
+        
+        # Filter products that exist in our database
+        filtered_products = [
+            product for product in category_products 
+            if product['id'] in existing_ids
+        ]
 
         # Always return a list even if empty
         result.data = filtered_products
@@ -226,7 +414,7 @@ class PrintProductController:
         return result
 
     @staticmethod
-    def update_print_product_category(category_id: int, description: str = None, image=None):
+    def update_print_product_category(category_id: int, description: str = None, image=None) -> Result:
         """Update the description or image of a product category securely"""
         result = Result()
 
@@ -253,20 +441,36 @@ class PrintProductController:
                     # Ensure file is not empty
                     if image.filename == "":
                         result.status = False
-                        
                         result.error = PrintProductErrors.EMPTY_IMAGE_FILENAME.value
                         return result
 
+                    # Validate file type
                     content_type = image.content_type
-                    filename = image.filename
+                    if not content_type or not content_type.startswith('image/'):
+                        result.status = False
+                        result.error = PrintProductErrors.INVALID_IMAGE_FILE.value
+                        return result
+
+                    # Generate unique filename to avoid conflicts
+                    original_filename = secure_filename(image.filename)
+                    file_extension = os.path.splitext(original_filename)[1].lower()
+                    
+                    # Generate unique filename with timestamp and UUID
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    unique_id = str(uuid.uuid4())[:8]
+                    unique_filename = f"category_{timestamp}_{unique_id}{file_extension}"
+                    
+                    # Read file data
                     file_data = image.read()
 
                     # Upload file using current filestorage
                     filestorage = current_app.extensions["filestorage"]
-                    image_url = filestorage.upload_file(file_data, filename, content_type)
+                    image_url = filestorage.upload_file(file_data, unique_filename, content_type)
 
                     # Save URL in DB
                     category.image = image_url
+                    
+                    logger.info(f"Category image updated successfully: {unique_filename} -> {image_url}")
                 else:
                     result.status = False
                     result.error = PrintProductErrors.INVALID_IMAGE_FILE.value
@@ -279,5 +483,599 @@ class PrintProductController:
             db.session.rollback()
             result.status = False
             result.error = f"{PrintProductErrors.FAILED_TO_UPDATE_PRODUCT_CATEGORY.value}: {str(e)}"
+
+        return result
+
+    @staticmethod
+    def get_all_print_product_types() -> Result:
+        """Retrieve all print product types from the database."""
+        result = Result()
+
+        try:
+            # Check if table is empty
+            table_is_empty = (PrintProductType.query.first() is None)
+            if table_is_empty:
+                result.data = []
+                result.status = True
+                return result
+
+            # Fetch all product types sorted by name
+            product_types = PrintProductType.query.order_by(PrintProductType.name.asc()).all()
+
+            if product_types:
+                result.data = [product_type.to_dict() for product_type in product_types]
+                result.status = True
+            else:
+                result.status = False
+                result.error = PrintProductErrors.FAILED_TO_FETCH_PRINT_PRODUCT_TYPES.value
+            
+        except Exception as e:
+            result.status = False
+            result.error = f"{PrintProductErrors.FAILED_TO_FETCH_PRINT_PRODUCT_TYPES.value}: {str(e)}"
+            logger.error(f"Error fetching print product types: {str(e)}")
+
+        
+        return result
+
+    @staticmethod
+    def create_print_product_type(data: dict) -> Result:
+        """Create a new print product type in the database."""
+        result = Result()
+        
+        try:
+            # Extract fields from input data
+            name = data.get('name')
+            category_id = data.get('category_id')
+            description = data.get('description')
+            image = data.get('image')
+
+            # Validate required fields
+            if not name:
+                result.status = False
+                result.error = PrintProductErrors.PRODUCT_TYPE_NAME_REQUIRED.value
+                return result
+            
+            if not category_id:
+                result.status = False
+                result.error = PrintProductErrors.PRODUCT_TYPE_CATEGORY_ID_REQUIRED.value
+                return result
+                
+            if not description:
+                result.status = False
+                result.error = PrintProductErrors.PRODUCT_TYPE_DESCRIPTION_REQUIRED.value
+                return result
+            
+            # Validate name length
+            if len(name) < 2:
+                result.status = False
+                result.error = PrintProductErrors.PRODUCT_TYPE_NAME_TOO_SHORT.value
+                return result
+                
+            if len(name) > 255:
+                result.status = False
+                result.error = PrintProductErrors.PRODUCT_TYPE_NAME_TOO_LONG.value
+                return result
+            
+            # Validate category exists
+            category = db.session.get(PrintProductCategory, category_id)
+            if not category:
+                result.status = False
+                result.error = PrintProductErrors.PRODUCT_TYPE_CATEGORY_NOT_FOUND.value
+                return result
+
+            # Check if product type with same name already exists in this category
+            existing_type = PrintProductType.query.filter_by(
+                name=name, 
+                category_id=category_id
+            ).first()
+            
+            if existing_type:
+                result.status = False
+                result.error = PrintProductErrors.PRODUCT_TYPE_NAME_ALREADY_EXISTS.value
+                return result
+
+            # Handle image upload if provided
+            image_url = None
+            if image is not None:
+                if isinstance(image, FileStorage):
+                    # Ensure file is not empty
+                    if image.filename == "":
+                        result.status = False
+                        result.error = PrintProductErrors.EMPTY_IMAGE_FILENAME.value
+                        return result
+
+                    # Validate file type
+                    content_type = image.content_type
+                    if not content_type or not content_type.startswith('image/'):
+                        result.status = False
+                        result.error = PrintProductErrors.INVALID_IMAGE_FILE.value
+                        return result
+
+                    # Generate unique filename to avoid conflicts
+                    import uuid
+                    from werkzeug.utils import secure_filename
+                    from datetime import datetime
+                    
+                    # Get file extension
+                    original_filename = secure_filename(image.filename)
+                    file_extension = os.path.splitext(original_filename)[1].lower()
+                    
+                    # Generate unique filename with timestamp and UUID
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    unique_id = str(uuid.uuid4())[:8]
+                    unique_filename = f"product_type_{timestamp}_{unique_id}{file_extension}"
+                    
+                    # Read file data
+                    file_data = image.read()
+                    
+                    # Upload file using filestorage
+                    filestorage = current_app.extensions["filestorage"]
+                    image_url = filestorage.upload_file(file_data, unique_filename, content_type)
+                    
+                    logger.info(f"Image uploaded successfully: {unique_filename} -> {image_url}")
+                else:
+                    result.status = False
+                    result.error = PrintProductErrors.INVALID_IMAGE_FILE.value
+                    return result
+
+            # Create new product type
+            new_product_type = PrintProductType(
+                name=name,
+                category_id=category_id,
+                description=description,
+                image=image_url
+            )
+            
+            db.session.add(new_product_type)
+            db.session.commit()
+            
+            result.data = new_product_type.to_dict()
+            result.status = True
+            
+        except Exception as e:
+            db.session.rollback()
+            result.status = False
+            result.error = f"{PrintProductErrors.FAILED_TO_CREATE_PRODUCT_TYPE.value}: {str(e)}"
+            logger.error(f"Error creating product type: {str(e)}")
+
+        return result
+
+    @staticmethod
+    def update_print_product_type(type_id: int, description: str = None, image=None) -> Result:
+        """Update the description or image of a product type securely"""
+        result = Result()
+
+        try:
+            product_type = db.session.get(PrintProductType, type_id)
+
+            if not product_type:
+                result.status = False
+                result.error = PrintProductErrors.PRINT_PRODUCT_TYPE_NOT_FOUND.value
+                return result
+
+            # Prevent modification of the unclassified wildcard type (ID 0)
+            if type_id == 0:
+                result.status = False
+                result.error = "Cannot modify the unclassified product type (system reserved)"
+                return result
+
+            # Sanitize and validate description
+            if description:
+                description = escape(description.strip())
+                if len(description) > 1000:
+                    result.status = False
+                    result.error = PrintProductErrors.PRINT_PRODUCT_DESCRIPTION_TOO_LONG.value
+                    return result
+                product_type.description = description
+
+            # Handle image upload
+            if image is not None:
+                if isinstance(image, FileStorage):
+                    # Ensure file is not empty
+                    if image.filename == "":
+                        result.status = False
+                        result.error = PrintProductErrors.EMPTY_IMAGE_FILENAME.value
+                        return result
+
+                    # Validate file type
+                    content_type = image.content_type
+                    if not content_type or not content_type.startswith('image/'):
+                        result.status = False
+                        result.error = PrintProductErrors.INVALID_IMAGE_FILE.value
+                        return result
+
+                    # Generate unique filename to avoid conflicts
+                    original_filename = secure_filename(image.filename)
+                    file_extension = os.path.splitext(original_filename)[1].lower()
+                    
+                    # Generate unique filename with timestamp and UUID
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    unique_id = str(uuid.uuid4())[:8]
+                    unique_filename = f"product_type_{timestamp}_{unique_id}{file_extension}"
+                    
+                    # Read file data
+                    file_data = image.read()
+
+                    # Upload file using current filestorage
+                    filestorage = current_app.extensions["filestorage"]
+                    image_url = filestorage.upload_file(file_data, unique_filename, content_type)
+
+                    # Save URL in DB
+                    product_type.image = image_url
+                    
+                    logger.info(f"Product type image updated successfully: {unique_filename} -> {image_url}")
+                else:
+                    result.status = False
+                    result.error = PrintProductErrors.INVALID_IMAGE_FILE.value
+                    return result
+
+            db.session.commit()
+            result.data = {"message": PrintProductSuccessMessages.PRODUCT_TYPE_UPDATED_SUCCESSFULLY.value}
+
+        except Exception as e:
+            db.session.rollback()
+            result.status = False
+            result.error = f"{PrintProductErrors.FAILED_TO_UPDATE_PRODUCT_TYPE.value}: {str(e)}"
+
+        return result
+
+    @staticmethod
+    def delete_print_product_type(type_id: int) -> Result:
+        """Delete a print product type from the database."""
+        result = Result()
+
+        try:
+            product_type = db.session.get(PrintProductType, type_id)
+
+            if not product_type:
+                result.status = False
+                result.error = PrintProductErrors.PRINT_PRODUCT_TYPE_NOT_FOUND.value
+                return result
+
+            # Prevent deletion of the unclassified wildcard type (ID 0)
+            if type_id == 0:
+                result.status = False
+                result.error = "Cannot delete the unclassified product type (system reserved)"
+                return result
+
+            # Check if there are any products using this type
+            products_using_type = PrintProduct.query.filter_by(type_id=type_id).first()
+            
+        
+            if products_using_type:
+                result.status = False
+                result.error = PrintProductErrors.PRODUCT_TYPE_IN_USE.value
+                return result
+
+            # Delete the product type
+            db.session.delete(product_type)
+            db.session.commit()
+
+            result.data = {"message": PrintProductSuccessMessages.PRODUCT_TYPE_DELETED_SUCCESSFULLY.value}
+            result.status = True
+
+        except Exception as e:
+            db.session.rollback()
+            result.status = False
+            result.error = f"{PrintProductErrors.FAILED_TO_DELETE_PRODUCT_TYPE.value}: {str(e)}"
+            logger.error(f"Error deleting product type: {str(e)}")
+
+        return result
+
+    @staticmethod
+    def ensure_unclassified_type_exists() -> Result:
+        """Ensure the unclassified product type (ID 0) exists in the database"""
+        result = Result()
+
+        try:
+            # Check if unclassified type already exists
+            unclassified_type = db.session.get(PrintProductType, 0)
+            
+            if not unclassified_type:
+                # Create the unclassified type
+                unclassified_type = PrintProductType(
+                    id=0,
+                    name="Unclassified",
+                    description="Default type for products not yet classified",
+                    category_id=None  # No specific category - system-wide wildcard
+                )
+                
+                db.session.add(unclassified_type)
+                db.session.commit()
+                
+                result.data = {"message": "Unclassified product type created successfully"}
+                result.status = True
+            else:
+                result.data = {"message": "Unclassified product type already exists"}
+                result.status = True
+
+        except Exception as e:
+            db.session.rollback()
+            result.status = False
+            result.error = f"Failed to ensure unclassified type exists: {str(e)}"
+            logger.error(f"Error ensuring unclassified type exists: {str(e)}")
+
+        return result
+
+    @staticmethod
+    def assign_product_to_type(product_id: int, type_id: int) -> Result:
+        """Assign a product to a product type"""
+        result = Result()
+        
+        try:
+            # Get the product
+            product = db.session.get(PrintProduct, product_id)
+            
+            if not product:
+                result.status = False
+                result.error = "Product not found"
+                return result
+
+            # Prevent assignment to the unclassified wildcard type (ID 0)
+            if type_id == 0:
+                result.status = False
+                result.error = "Cannot assign product to unclassified type (use unassign instead)"
+                return result
+
+            # Get the product type
+            product_type = db.session.get(PrintProductType, type_id)
+            print(f"DEBUG: Found product type {type_id}: {product_type.name if product_type else 'NOT FOUND'}")
+
+            if not product_type:
+                result.status = False
+                result.error = "Product type not found"
+                return result
+
+            # Verify the product type belongs to the same category as the product
+            if product_type.category_id != product.category_id:
+                result.status = False
+                result.error = "Product type must belong to the same category as the product"
+                return result
+
+            # Assign the product to the type
+            old_type_id = product.type_id
+            product.type_id = type_id
+            print(f"DEBUG: Updating product {product_id} type_id from {old_type_id} to {type_id}")
+            
+            db.session.commit()
+            print(f"DEBUG: Database committed successfully")
+
+            # Verify the update
+            db.session.refresh(product)
+            print(f"DEBUG: After commit, product {product_id} type_id: {product.type_id}")
+
+            # Update the category's classification status
+            PrintProductController.update_category_classification_status(product.category_id)
+
+            result.data = {"message": "Product assigned to product type successfully"}
+            result.status = True
+
+        except Exception as e:
+            db.session.rollback()
+            result.status = False
+            result.error = f"Failed to assign product to type: {str(e)}"
+            logger.error(f"Error assigning product to type: {str(e)}")
+
+        return result
+
+    @staticmethod
+    def unassign_product_from_type(product_id: int) -> Result:
+        """Unassign a product from its product type"""
+        result = Result()
+
+        try:
+            # Get the product
+            product = db.session.get(PrintProduct, product_id)
+            
+            if not product:
+                result.status = False
+                result.error = "Product not found"
+                return result
+
+            # Store category_id before unassigning
+            category_id = product.category_id
+
+            # Unassign the product from its type (set to unclassified type 0)
+            product.type_id = 0
+            db.session.commit()
+
+            # Update the category's classification status
+            PrintProductController.update_category_classification_status(category_id)
+
+            result.data = {"message": "Product unassigned from product type successfully"}
+            result.status = True
+
+        except Exception as e:
+            db.session.rollback()
+            result.status = False
+            result.error = f"Failed to unassign product from type: {str(e)}"
+            logger.error(f"Error unassigning product from type: {str(e)}")
+
+        return result
+
+    @staticmethod
+    def update_print_product(product_id: int, description: str = None, image=None) -> Result:
+        """Update the description or image of a product securely"""
+        result = Result()
+
+        try:
+            product = db.session.get(PrintProduct, product_id)
+
+            if not product:
+                result.status = False
+                result.error = "Product not found"
+                return result
+
+            # Sanitize and validate description
+            if description:
+                description = escape(description.strip())
+                if len(description) > 1000:
+                    result.status = False
+                    result.error = PrintProductErrors.PRINT_PRODUCT_DESCRIPTION_TOO_LONG.value
+                    return result
+                product.description = description
+
+            # Handle image upload
+            if image is not None:
+                if isinstance(image, FileStorage):
+                    # Ensure file is not empty
+                    if image.filename == "":
+                        result.status = False
+                        result.error = PrintProductErrors.EMPTY_IMAGE_FILENAME.value
+                        return result
+
+                    # Validate file type
+                    content_type = image.content_type
+                    if not content_type or not content_type.startswith('image/'):
+                        result.status = False
+                        result.error = PrintProductErrors.INVALID_IMAGE_FILE.value
+                        return result
+
+                    # Generate unique filename to avoid conflicts
+                    original_filename = secure_filename(image.filename)
+                    file_extension = os.path.splitext(original_filename)[1].lower()
+                    
+                    # Generate unique filename with timestamp and UUID
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    unique_id = str(uuid.uuid4())[:8]
+                    unique_filename = f"product_{timestamp}_{unique_id}{file_extension}"
+                    
+                    # Read file data
+                    file_data = image.read()
+
+                    # Upload file using current filestorage
+                    filestorage = current_app.extensions["filestorage"]
+                    image_url = filestorage.upload_file(file_data, unique_filename, content_type)
+
+                    # Save URL in DB
+                    product.image = image_url
+                    
+                    logger.info(f"Product image updated successfully: {unique_filename} -> {image_url}")
+                else:
+                    result.status = False
+                    result.error = PrintProductErrors.INVALID_IMAGE_FILE.value
+                    return result
+
+            db.session.commit()
+            result.data = {"message": "Product updated successfully"}
+
+        except Exception as e:
+            db.session.rollback()
+            result.status = False
+            result.error = f"Failed to update product: {str(e)}"
+
+        return result
+
+    @staticmethod
+    def are_all_products_classified(category_id: int) -> Result:
+        """Check if all products in a category are classified to a product type"""
+        result = Result()
+
+        try:
+            products = PrintProduct.query.filter_by(category_id=category_id).all()
+            
+            if not products:
+                # No products in category, so technically all are classified
+                result.data = {"all_classified": True, "total_products": 0, "classified_products": 0}
+                result.status = True
+                return result
+
+            # Check how many products have a type_id > 0 (classified)
+            # type_id = 0 is the unclassified wildcard type
+            classified_products = sum(1 for product in products if product.type_id > 0)
+            total_products = len(products)
+            all_classified = classified_products == total_products
+
+            result.data = {
+                "all_classified": all_classified,
+                "total_products": total_products,
+                "classified_products": classified_products,
+                "unclassified_products": total_products - classified_products
+            }
+            result.status = True
+
+        except Exception as e:
+            result.status = False
+            result.error = f"Failed to check product classification: {str(e)}"
+            logger.error(f"Error checking product classification: {str(e)}")
+
+        return result
+
+    @staticmethod
+    def update_category_classification_status(category_id: int) -> Result:
+        """Update the classification status for a specific category"""
+        result = Result()
+
+        try:
+            from server.models.print_product import PrintProduct
+            
+            # Get the category
+            category = db.session.get(PrintProductCategory, category_id)
+            if not category:
+                result.status = False
+                result.error = "Category not found"
+                return result
+
+            # Get all products in the category
+            products = PrintProduct.query.filter_by(category_id=category_id).all()
+            
+            if not products:
+                # No products in category, so all are classified
+                category.product_classification_status = {
+                    "all_classified": True,
+                    "total_products": 0,
+                    "classified_products": 0,
+                    "unclassified_products": 0
+                }
+            else:
+                # Check how many products have a type_id > 0 (classified)
+                # type_id = 0 is the unclassified wildcard type
+                classified_products = sum(1 for product in products if product.type_id > 0)
+                total_products = len(products)
+                all_classified = classified_products == total_products
+
+                category.product_classification_status = {
+                    "all_classified": all_classified,
+                    "total_products": total_products,
+                    "classified_products": classified_products,
+                    "unclassified_products": total_products - classified_products
+                }
+
+            db.session.commit()
+            result.status = True
+
+        except Exception as e:
+            db.session.rollback()
+            result.status = False
+            result.error = f"Failed to update classification status: {str(e)}"
+            logger.error(f"Error updating classification status: {str(e)}")
+
+        return result
+
+    @staticmethod
+    def get_all_product_categories_with_status() -> Result:
+        """Retrieve all product categories with their classification status"""
+        result = Result()
+
+        try:
+            # Check if table is empty
+            table_is_empty = (PrintProductCategory.query.first() is None)
+            if table_is_empty:
+                result.data = []
+                return result
+
+            # Always fetch categories sorted by name
+            categories = PrintProductCategory.query.order_by(PrintProductCategory.name.asc()).all()
+
+            if categories:
+                result.data = [category.to_dict() for category in categories]
+            else:
+                result.status = False
+                result.error = PrintProductErrors.FAILED_TO_FETCH_PRINT_PRODUCT_CATEGORIES.value
+            
+        except Exception as e:
+            result.status = False
+            result.error = f"{PrintProductErrors.FAILED_TO_FETCH_PRINT_PRODUCT_CATEGORIES.value}: {str(e)}"
+            logger.error(f"Error fetching categories with status: {str(e)}")
 
         return result
