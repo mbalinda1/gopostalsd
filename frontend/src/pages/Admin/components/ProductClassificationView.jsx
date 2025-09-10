@@ -53,6 +53,7 @@ import { CircularProgress } from "@mui/material";
 
 const ProductClassificationView = ({ category, onBack, onCategoryUpdate }) => {
   const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [productTypes, setProductTypes] = useState([]);
   const [products, setProducts] = useState([]);
   const [localClassificationStatus, setLocalClassificationStatus] = useState(category.product_classification_status || {});
@@ -78,32 +79,24 @@ const ProductClassificationView = ({ category, onBack, onCategoryUpdate }) => {
   // Load data when component mounts or category changes
   useEffect(() => {
     if (category.id) {
+      setInitialLoading(true);
       loadData();
     }
   }, [category.id]);
 
   // Update local classification status when category prop changes
   useEffect(() => {
-    console.log('Category prop changed:', {
-      categoryId: category.id,
-      categoryName: category.name,
-      classificationStatus: category.product_classification_status,
-      localStatus: localClassificationStatus
-    });
-    
     // Only update local status if the category prop has a different classification status
     // This prevents overwriting our local updates
     if (JSON.stringify(category.product_classification_status) !== JSON.stringify(localClassificationStatus)) {
-      console.log('Updating local classification status from category prop');
       setLocalClassificationStatus(category.product_classification_status || {});
-    } else {
-      console.log('Category prop classification status unchanged, keeping local state');
     }
   }, [category.product_classification_status]);
 
   const loadData = async () => {
     try {
       setLoading(true);
+      setInitialLoading(true);
       
       // Load product types and products in parallel
       const [typesResult, productsResult] = await Promise.all([
@@ -111,8 +104,6 @@ const ProductClassificationView = ({ category, onBack, onCategoryUpdate }) => {
         fetchAllPrintProductsByCategory(category.id),
       ]);
 
-      console.log('[Ben]: Types result:', typesResult);
-      console.log('[Ben]: Products result:', productsResult);
       
       if (typesResult.success) {
         // Filter product types to only show those for the current category
@@ -129,78 +120,21 @@ const ProductClassificationView = ({ category, onBack, onCategoryUpdate }) => {
           setSelectedProductType("");
         }
         
-        console.log('Loaded product types for category:', {
-          categoryId: category.id,
-          categoryName: category.name,
-          totalTypes: typesResult.data.length,
-          categoryTypes: categoryTypes.length,
-          availableTypes: availableTypes.length
-        });
       }
       
       if (productsResult.success) {
         setProducts(productsResult.data);
         updateLocalClassificationStatus(productsResult.data);
         
-        console.log('Loaded products for category:', {
-          categoryId: category.id,
-          totalProducts: productsResult.data.length,
-          classifiedProducts: productsResult.data.filter(p => p.type_id > 0).length
-        });
       }
     } catch (error) {
       console.error("Failed to load data:", error);
     } finally {
       setLoading(false);
+      setInitialLoading(false);
     }
   };
 
-  // Debug function to check backend state
-  const debugBackendState = async () => {
-    try {
-      console.log('=== DEBUGGING BACKEND STATE ===');
-      console.log('Current category:', { id: category.id, name: category.name });
-      console.log('Current local product types:', productTypes.map(t => ({ id: t.id, name: t.name, category_id: t.category_id })));
-      console.log('Current local products:', products.map(p => ({ id: p.id, name: p.name, type_id: p.type_id })));
-      
-      // Check product types from backend
-      const backendTypes = await fetchAllProductTypes();
-      console.log('Backend product types (all):', backendTypes.map(t => ({ id: t.id, name: t.name, category_id: t.category_id })));
-      
-      // Check products from backend
-      const backendProducts = await fetchAllPrintProductsByCategory(category.id);
-      console.log('Backend products:', backendProducts.map(p => ({ id: p.id, name: p.name, type_id: p.type_id })));
-      
-      // Check for mismatches
-      const mismatches = products.filter(localProduct => {
-        const backendProduct = backendProducts.find(bp => bp.id === localProduct.id);
-        if (!backendProduct) {
-          console.log(`Product ${localProduct.id} not found in backend`);
-          return true;
-        }
-        if (backendProduct.type_id !== localProduct.type_id) {
-          console.log(`Type ID mismatch for product ${localProduct.id}: local=${localProduct.type_id}, backend=${backendProduct.type_id}`);
-          return true;
-        }
-        return false;
-      });
-      
-      console.log('Mismatches found:', mismatches.length);
-      if (mismatches.length > 0) {
-        console.log('Mismatched products:', mismatches);
-      }
-      
-      // Show summary
-      console.log('=== SUMMARY ===');
-      console.log(`Category: ${category.name} (ID: ${category.id})`);
-      console.log(`Product Types: ${productTypes.length} local, ${backendTypes.length} total in system`);
-      console.log(`Products: ${products.length} local, ${backendProducts.length} in backend`);
-      console.log(`Category-specific types: ${productTypes.filter(t => t.category_id === category.id).length}`);
-      console.log('=== END DEBUG ===');
-    } catch (error) {
-      console.error('Error debugging backend state:', error);
-    }
-  };
 
   // Update local classification status based on current products
   const updateLocalClassificationStatus = (currentProducts) => {
@@ -251,7 +185,7 @@ const ProductClassificationView = ({ category, onBack, onCategoryUpdate }) => {
         setProducts(updatedProducts);
         updateLocalClassificationStatus(updatedProducts);
         
-        alert(`Product "${product.name}" has been classified to "${productTypes.find(t => t.id === selectedProductType)?.name}"`);
+        //alert(`Product "${product.name}" has been classified to "${productTypes.find(t => t.id === selectedProductType)?.name}"`);
       } catch (error) {
         console.error("Error assigning product via drag & drop:", error);
         alert("Failed to classify product!");
@@ -376,7 +310,6 @@ const ProductClassificationView = ({ category, onBack, onCategoryUpdate }) => {
   };
 
   // Filter out the unclassified type (ID 0) from product type options
-  console.log('[Ben]: Debugging product types:', productTypes);
   const filteredProductTypes = productTypes.filter(type => type.id !== 0);
 
   // Product handlers
@@ -489,10 +422,7 @@ const ProductClassificationView = ({ category, onBack, onCategoryUpdate }) => {
     
     try {
       setLoading(true);
-      console.log('Starting sync for category:', category.id, category.name);
-      
-      const syncResult = await syncProductsForCategory(category.id);
-      console.log('Sync result:', syncResult);
+    const syncResult = await syncProductsForCategory(category.id);
       
       // Show detailed sync results
       const message = `Sync completed successfully!\n\n` +
@@ -503,12 +433,10 @@ const ProductClassificationView = ({ category, onBack, onCategoryUpdate }) => {
       alert(message);
       
       // Reload data to show updated products from sync
-      console.log('Reloading data after sync...');
       await loadData();
       
       // Update parent component
       if (onCategoryUpdate) {
-        console.log('Calling onCategoryUpdate...');
         onCategoryUpdate();
       }
       
@@ -520,6 +448,26 @@ const ProductClassificationView = ({ category, onBack, onCategoryUpdate }) => {
       setLoading(false);
     }
   };
+
+  // Show loading spinner while initial data is being fetched
+  if (initialLoading) {
+    return (
+      <Box sx={{ 
+        width: "100%", 
+        height: "60vh", 
+        display: "flex", 
+        flexDirection: "column",
+        alignItems: "center", 
+        justifyContent: "center",
+        gap: 2
+      }}>
+        <CircularProgress size={60} />
+        <Typography variant="h6" color="text.secondary">
+          Loading product classification data...
+        </Typography>
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ width: "100%", position: "relative" }}>
@@ -589,32 +537,6 @@ const ProductClassificationView = ({ category, onBack, onCategoryUpdate }) => {
               }}
             >
               {loading ? "Syncing..." : "Sync Products"}
-            </Button>
-            <Button
-              variant="outlined"
-              size="small"
-              onClick={debugBackendState}
-              disabled={loading}
-              sx={{
-                borderRadius: 2,
-                px: 2,
-                py: 0.5,
-                fontWeight: 500,
-                borderWidth: 1.5,
-                fontSize: "0.75rem",
-                textTransform: "none",
-                backgroundColor: "#ffeb3b",
-                borderColor: "#f57f17",
-                "&:hover": {
-                  borderWidth: 2,
-                  transform: "translateY(-1px)",
-                  boxShadow: 1,
-                  backgroundColor: "#fff59d",
-                },
-                transition: "all 0.2s ease-in-out",
-              }}
-            >
-              🐛 Debug
             </Button>
           </Typography>
           
@@ -788,8 +710,8 @@ const ProductClassificationView = ({ category, onBack, onCategoryUpdate }) => {
                       }}>
                         <Box
                           sx={{
-                            width: 100,
-                            height: 100,
+                            width: { xs: 100, sm: 200, md: 220, lg: 240 },
+                            height: { xs: 100, sm: 200, md: 220, lg: 240 },
                             borderRadius: 2,
                             overflow: "hidden",
                             mb: 2,
@@ -952,40 +874,6 @@ const ProductClassificationView = ({ category, onBack, onCategoryUpdate }) => {
                             : "Create a product type first to start organizing your products."
                           }
                         </Typography>
-                      </Box>
-                      <Box sx={{ 
-                        display: "flex", 
-                        gap: 1.5, 
-                        justifyContent: "center",
-                        flexWrap: "wrap",
-                        mt: "auto"
-                      }}>
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          disabled
-                          sx={{ 
-                            minWidth: 80,
-                            borderRadius: 1.5,
-                            borderColor: filteredProductTypes.length === 0 ? "error.main" : undefined,
-                            color: filteredProductTypes.length === 0 ? "error.main" : undefined
-                          }}
-                        >
-                          {filteredProductTypes.length > 0 ? "Edit" : "Create"}
-                        </Button>
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          disabled
-                          sx={{ 
-                            minWidth: 80,
-                            borderRadius: 1.5,
-                            borderColor: filteredProductTypes.length === 0 ? "error.main" : undefined,
-                            color: filteredProductTypes.length === 0 ? "error.main" : undefined
-                          }}
-                        >
-                          {filteredProductTypes.length === 0 ? "Manage" : "Delete"}
-                        </Button>
                       </Box>
                     </CardContent>
                   </Card>
