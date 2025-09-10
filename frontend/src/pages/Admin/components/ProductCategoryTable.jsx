@@ -133,4 +133,4 @@ const ProductCategoryTableRow = ({ productCategory, handleToggle, onEdit, onEdit
   );
 };
 
-export default ProductCategoryTable
+export default ProductCategoryTable;

@@ -6,15 +6,6 @@ from server.controllers.print_product_controller import PrintProductController
 # Define a namespace for print products
 api = Namespace("Print", description="Operations related to print products")
 
-# Define a product response model
-product_model = api.model("Product", {
-    "id": fields.Integer(description="Product ID"),
-    "sku": fields.String(description="Stock Keeping Unit (SKU)"),
-    "name": fields.String(description="Product name"),
-    "category": fields.String(description="Product category"),
-    "enabled": fields.Integer(description="Product availability status"),
-})
-
 # Define category response model
 category_model = api.model("ProductCategory", {
     "id": fields.Integer(description="Category ID"),
@@ -22,6 +13,7 @@ category_model = api.model("ProductCategory", {
     "description": fields.String(description="Category description"),
     "image": fields.String(description="Category image URL"),
     "enabled": fields.Boolean(description="Category status"),
+    "product_classification_status": fields.Raw(description="Product classification status for this category"),
     "created_at": fields.DateTime(description="Created timestamp"),
     "updated_at": fields.DateTime(description="Updated timestamp"),
 })
@@ -37,8 +29,16 @@ product_type_model = api.model("ProductType", {
     "updated_at": fields.DateTime(description="Updated timestamp"),
 })
 
+# Define vendor response model
+vendor_model = api.model("Vendor", {
+    "id": fields.Integer(description="Vendor ID"),
+    "name": fields.String(description="Vendor name"),
+    "created_at": fields.DateTime(description="Created timestamp"),
+    "updated_at": fields.DateTime(description="Updated timestamp"),
+})
+
 # Define product response model
-product_model_v2 = api.model("Product V2", {
+product_model = api.model("Product", {
     "id": fields.Integer(description="Product ID"),
     "name": fields.String(description="Product name"),
     "sku": fields.String(description="Stock Keeping Unit"),
@@ -46,6 +46,8 @@ product_model_v2 = api.model("Product V2", {
     "type_id": fields.Integer(description="Product Type ID this product belongs to"),
     "description": fields.String(description="Product description"),
     "image": fields.String(description="Product image URL"),
+    "vendor_id": fields.Integer(description="Vendor ID this product belongs to"),
+    "vendor_product_id": fields.String(description="Vendor's product ID"),
     "created_at": fields.DateTime(description="Created timestamp"),
     "updated_at": fields.DateTime(description="Updated timestamp"),
 })
@@ -196,7 +198,7 @@ create_product_type_parser = reqparse.RequestParser()
 create_product_type_parser.add_argument("name", type=str, location="form", required=True, help="Product type name")
 create_product_type_parser.add_argument("category_id", type=int, location="form", required=True, help="Category ID this type belongs to")
 create_product_type_parser.add_argument("description", type=str, location="form", required=True, help="Product type description")
-create_product_type_parser.add_argument("image", type=str, location="form", required=False, help="Product type image URL")
+create_product_type_parser.add_argument("image", type=FileStorage, location="files", required=False, help="Product type image file")
 
 @api.route("/product-types")
 class PrintProductTypesResource(Resource):
@@ -313,7 +315,6 @@ class PrintProductAssignTypeResource(Resource):
             return {"error": "type_id is required"}, 400, {"Content-Type": "application/json"}
         
         result = PrintProductController.assign_product_to_type(product_id, type_id)
-        print(result.data)
 
         if result.status:
             return result.data, 200
@@ -387,6 +388,22 @@ class PrintProductCategoryClassificationStatusResource(Resource):
             return result.data, 200
         else:
             return {"error": result.error}, 500
+
+@api.route("/vendors")
+class PrintProductVendorsResource(Resource):
+    """Resource for retrieving all vendors"""
+
+    @api.doc(description="Get all vendors")
+    @api.response(200, "Vendors retrieved successfully")
+    @api.response(500, "Server error")
+    def get(self):
+        """Get all vendors"""
+        result = PrintProductController.get_all_vendors()
+
+        if result.status:
+            return result.data, 200
+        else:
+            return {"error": result.error}, 500, {"Content-Type": "application/json"}
 
 @api.route("/categories/<int:category_id>/sync-products")
 class PrintProductSyncResource(Resource):

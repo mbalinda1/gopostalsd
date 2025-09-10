@@ -5,7 +5,11 @@ from server.config import database as db
 from server.models.print_product import PrintProductCategory, PrintProductType, PrintProduct
 from markupsafe import escape
 import logging
+import os
+import uuid
+from datetime import datetime
 from werkzeug.datastructures import FileStorage
+from werkzeug.utils import secure_filename
 from flask import current_app
 
 logger = logging.getLogger(__name__)
@@ -176,6 +180,38 @@ class PrintProductController:
         return result
 
     @staticmethod
+    def get_all_vendors() -> Result:
+        """Retrieve all vendors from the database."""
+        result = Result()
+
+        try:
+            from server.models.print_product import Vendor
+            
+            # Check if table is empty
+            table_is_empty = (Vendor.query.first() is None)
+            if table_is_empty:
+                result.data = []
+                result.status = True
+                return result
+
+            # Fetch all vendors sorted by name
+            vendors = Vendor.query.order_by(Vendor.name.asc()).all()
+
+            if vendors:
+                result.data = [vendor.to_dict() for vendor in vendors]
+                result.status = True
+            else:
+                result.status = False
+                result.error = "Failed to fetch vendors"
+            
+        except Exception as e:
+            result.status = False
+            result.error = f"Failed to fetch vendors: {str(e)}"
+            logger.error(f"Error fetching vendors: {str(e)}")
+
+        return result
+
+    @staticmethod
     def sync_print_products(category_id: int) -> Result:
         """Sync print products from Sinalite API for a given category (manual trigger)."""
         result = Result()
@@ -215,6 +251,9 @@ class PrintProductController:
             existing_products = PrintProduct.query.filter_by(category_id=category_id).all()
             existing_sku_map = {product.sku: product for product in existing_products}
             
+            # Sinalite vendor ID is 1 (as defined in the migration)
+            SINALITE_VENDOR_ID = 1
+            
             products_added = 0
             products_updated = 0
             
@@ -228,6 +267,9 @@ class PrintProductController:
                     existing_product = existing_sku_map[sku]
                     existing_product.name = sinalite_product.get('name', existing_product.name)
                     # Note: We don't update description from Sinalite since they don't provide descriptions
+                    # Update vendor_product_id if it changed
+                    if existing_product.vendor_product_id != str(sinalite_product.get('id')):
+                        existing_product.vendor_product_id = str(sinalite_product.get('id'))
                     products_updated += 1
                 else:
                     # Create new product - set description to None initially
@@ -236,7 +278,9 @@ class PrintProductController:
                         sku=sku,
                         description=None,  # Sinalite doesn't provide descriptions, user will define later
                         category_id=category_id,
-                        type_id=0  # Default to unclassified
+                        type_id=0,  # Default to unclassified
+                        vendor_id=SINALITE_VENDOR_ID,  # Sinalite vendor
+                        vendor_product_id=str(sinalite_product.get('id'))  # Sinalite's product ID
                     )
                     db.session.add(new_product)
                     products_added += 1
@@ -295,11 +339,18 @@ class PrintProductController:
             result.error = PrintProductErrors.PRINT_PRODUCT_CATEGORY_NOT_FOUND.value
             return result
 
-        # Fetch all products from database for this category
+        # Get products for this category
         db_products = PrintProduct.query.filter_by(category_id=category_id).all()
+        print(f"DEBUG: Found {len(db_products)} products for category {category_id}")
+        
+        # Log each product's type_id
+        for product in db_products:
+            print(f"DEBUG: Product {product.id} ({product.name}) has type_id: {product.type_id}")
         
         # Convert to dictionary format to maintain API compatibility
         filtered_products = [product.to_dict() for product in db_products]
+
+        print(f"DEBUG: Filtered products: {filtered_products}")
 
         # Always return a list even if empty
         result.data = filtered_products
@@ -390,20 +441,36 @@ class PrintProductController:
                     # Ensure file is not empty
                     if image.filename == "":
                         result.status = False
-                        
                         result.error = PrintProductErrors.EMPTY_IMAGE_FILENAME.value
                         return result
 
+                    # Validate file type
                     content_type = image.content_type
-                    filename = image.filename
+                    if not content_type or not content_type.startswith('image/'):
+                        result.status = False
+                        result.error = PrintProductErrors.INVALID_IMAGE_FILE.value
+                        return result
+
+                    # Generate unique filename to avoid conflicts
+                    original_filename = secure_filename(image.filename)
+                    file_extension = os.path.splitext(original_filename)[1].lower()
+                    
+                    # Generate unique filename with timestamp and UUID
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    unique_id = str(uuid.uuid4())[:8]
+                    unique_filename = f"category_{timestamp}_{unique_id}{file_extension}"
+                    
+                    # Read file data
                     file_data = image.read()
 
                     # Upload file using current filestorage
                     filestorage = current_app.extensions["filestorage"]
-                    image_url = filestorage.upload_file(file_data, filename, content_type)
+                    image_url = filestorage.upload_file(file_data, unique_filename, content_type)
 
                     # Save URL in DB
                     category.image = image_url
+                    
+                    logger.info(f"Category image updated successfully: {unique_filename} -> {image_url}")
                 else:
                     result.status = False
                     result.error = PrintProductErrors.INVALID_IMAGE_FILE.value
@@ -507,12 +574,56 @@ class PrintProductController:
                 result.error = PrintProductErrors.PRODUCT_TYPE_NAME_ALREADY_EXISTS.value
                 return result
 
-            # Create new product type (image is optional)
+            # Handle image upload if provided
+            image_url = None
+            if image is not None:
+                if isinstance(image, FileStorage):
+                    # Ensure file is not empty
+                    if image.filename == "":
+                        result.status = False
+                        result.error = PrintProductErrors.EMPTY_IMAGE_FILENAME.value
+                        return result
+
+                    # Validate file type
+                    content_type = image.content_type
+                    if not content_type or not content_type.startswith('image/'):
+                        result.status = False
+                        result.error = PrintProductErrors.INVALID_IMAGE_FILE.value
+                        return result
+
+                    # Generate unique filename to avoid conflicts
+                    import uuid
+                    from werkzeug.utils import secure_filename
+                    from datetime import datetime
+                    
+                    # Get file extension
+                    original_filename = secure_filename(image.filename)
+                    file_extension = os.path.splitext(original_filename)[1].lower()
+                    
+                    # Generate unique filename with timestamp and UUID
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    unique_id = str(uuid.uuid4())[:8]
+                    unique_filename = f"product_type_{timestamp}_{unique_id}{file_extension}"
+                    
+                    # Read file data
+                    file_data = image.read()
+                    
+                    # Upload file using filestorage
+                    filestorage = current_app.extensions["filestorage"]
+                    image_url = filestorage.upload_file(file_data, unique_filename, content_type)
+                    
+                    logger.info(f"Image uploaded successfully: {unique_filename} -> {image_url}")
+                else:
+                    result.status = False
+                    result.error = PrintProductErrors.INVALID_IMAGE_FILE.value
+                    return result
+
+            # Create new product type
             new_product_type = PrintProductType(
                 name=name,
                 category_id=category_id,
                 description=description,
-                image=image if image else None
+                image=image_url
             )
             
             db.session.add(new_product_type)
@@ -566,16 +677,33 @@ class PrintProductController:
                         result.error = PrintProductErrors.EMPTY_IMAGE_FILENAME.value
                         return result
 
+                    # Validate file type
                     content_type = image.content_type
-                    filename = image.filename
+                    if not content_type or not content_type.startswith('image/'):
+                        result.status = False
+                        result.error = PrintProductErrors.INVALID_IMAGE_FILE.value
+                        return result
+
+                    # Generate unique filename to avoid conflicts
+                    original_filename = secure_filename(image.filename)
+                    file_extension = os.path.splitext(original_filename)[1].lower()
+                    
+                    # Generate unique filename with timestamp and UUID
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    unique_id = str(uuid.uuid4())[:8]
+                    unique_filename = f"product_type_{timestamp}_{unique_id}{file_extension}"
+                    
+                    # Read file data
                     file_data = image.read()
 
                     # Upload file using current filestorage
                     filestorage = current_app.extensions["filestorage"]
-                    image_url = filestorage.upload_file(file_data, filename, content_type)
+                    image_url = filestorage.upload_file(file_data, unique_filename, content_type)
 
                     # Save URL in DB
                     product_type.image = image_url
+                    
+                    logger.info(f"Product type image updated successfully: {unique_filename} -> {image_url}")
                 else:
                     result.status = False
                     result.error = PrintProductErrors.INVALID_IMAGE_FILE.value
@@ -673,13 +801,11 @@ class PrintProductController:
     def assign_product_to_type(product_id: int, type_id: int) -> Result:
         """Assign a product to a product type"""
         result = Result()
-        print("Product ID: ", product_id)
-        print("Type ID: ", type_id)
+        
         try:
             # Get the product
             product = db.session.get(PrintProduct, product_id)
-            print("Product Type 1: ", product)
-
+            
             if not product:
                 result.status = False
                 result.error = "Product not found"
@@ -693,8 +819,7 @@ class PrintProductController:
 
             # Get the product type
             product_type = db.session.get(PrintProductType, type_id)
-            
-            print("Product Type 1: ", product_type)
+            print(f"DEBUG: Found product type {type_id}: {product_type.name if product_type else 'NOT FOUND'}")
 
             if not product_type:
                 result.status = False
@@ -708,10 +833,17 @@ class PrintProductController:
                 return result
 
             # Assign the product to the type
+            old_type_id = product.type_id
             product.type_id = type_id
+            print(f"DEBUG: Updating product {product_id} type_id from {old_type_id} to {type_id}")
+            
             db.session.commit()
+            print(f"DEBUG: Database committed successfully")
 
-            print("Product 2: ", product)
+            # Verify the update
+            db.session.refresh(product)
+            print(f"DEBUG: After commit, product {product_id} type_id: {product.type_id}")
+
             # Update the category's classification status
             PrintProductController.update_category_classification_status(product.category_id)
 
@@ -792,16 +924,33 @@ class PrintProductController:
                         result.error = PrintProductErrors.EMPTY_IMAGE_FILENAME.value
                         return result
 
+                    # Validate file type
                     content_type = image.content_type
-                    filename = image.filename
+                    if not content_type or not content_type.startswith('image/'):
+                        result.status = False
+                        result.error = PrintProductErrors.INVALID_IMAGE_FILE.value
+                        return result
+
+                    # Generate unique filename to avoid conflicts
+                    original_filename = secure_filename(image.filename)
+                    file_extension = os.path.splitext(original_filename)[1].lower()
+                    
+                    # Generate unique filename with timestamp and UUID
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    unique_id = str(uuid.uuid4())[:8]
+                    unique_filename = f"product_{timestamp}_{unique_id}{file_extension}"
+                    
+                    # Read file data
                     file_data = image.read()
 
                     # Upload file using current filestorage
                     filestorage = current_app.extensions["filestorage"]
-                    image_url = filestorage.upload_file(file_data, filename, content_type)
+                    image_url = filestorage.upload_file(file_data, unique_filename, content_type)
 
                     # Save URL in DB
                     product.image = image_url
+                    
+                    logger.info(f"Product image updated successfully: {unique_filename} -> {image_url}")
                 else:
                     result.status = False
                     result.error = PrintProductErrors.INVALID_IMAGE_FILE.value

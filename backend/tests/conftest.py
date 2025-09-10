@@ -1,6 +1,7 @@
 import pytest
 from server.config import database as db
 from server import create_server
+from sqlalchemy import inspect
 
 
 # Define the app fixture required by pytest-flask
@@ -11,11 +12,13 @@ def app():
     # Set up the application context
     with test_app.app_context():
 
+        # Create tables
+        db.create_all()
+        
+        # Print table names for debugging
         print("TABLES")
-        for table in db.metadata.tables.keys():
+        for table in db.engine.table_names():
             print(table)
-
-        db.create_all()       # Create tables before tests run
         yield test_app        # This makes the app available to tests
         db.drop_all()         # Drop tables after tests complete
 

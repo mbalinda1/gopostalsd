@@ -45,7 +45,6 @@ import {
   assignProductToType,
   unassignProductFromType,
   updatePrintProductDetails,
-  checkCategoryClassificationStatus,
   syncProductsForCategory,
 } from "../../../services/product_service";
 import SpinnerOverlay from "../../../components/SpinnerOverlay";
@@ -56,7 +55,7 @@ const ProductClassificationView = ({ category, onBack, onCategoryUpdate }) => {
   const [loading, setLoading] = useState(false);
   const [productTypes, setProductTypes] = useState([]);
   const [products, setProducts] = useState([]);
-  const [classificationStatus, setClassificationStatus] = useState(null);
+  const [localClassificationStatus, setLocalClassificationStatus] = useState(category.product_classification_status || {});
   
   // Product Type Management
   const [selectedProductType, setSelectedProductType] = useState("");
@@ -75,32 +74,147 @@ const ProductClassificationView = ({ category, onBack, onCategoryUpdate }) => {
     imageFile: null,
     assignToType: null,
   });
-  
-  // Assignment Management
-  const [assigningProduct, setAssigningProduct] = useState(null);
-  const [selectedTypeId, setSelectedTypeId] = useState("");
 
+  // Load data when component mounts or category changes
   useEffect(() => {
-    loadData();
+    if (category.id) {
+      loadData();
+    }
   }, [category.id]);
+
+  // Update local classification status when category prop changes
+  useEffect(() => {
+    console.log('Category prop changed:', {
+      categoryId: category.id,
+      categoryName: category.name,
+      classificationStatus: category.product_classification_status,
+      localStatus: localClassificationStatus
+    });
+    
+    // Only update local status if the category prop has a different classification status
+    // This prevents overwriting our local updates
+    if (JSON.stringify(category.product_classification_status) !== JSON.stringify(localClassificationStatus)) {
+      console.log('Updating local classification status from category prop');
+      setLocalClassificationStatus(category.product_classification_status || {});
+    } else {
+      console.log('Category prop classification status unchanged, keeping local state');
+    }
+  }, [category.product_classification_status]);
 
   const loadData = async () => {
     try {
       setLoading(true);
-      const [typesResult, productsResult, statusResult] = await Promise.all([
+      
+      // Load product types and products in parallel
+      const [typesResult, productsResult] = await Promise.all([
         fetchAllProductTypes(),
         fetchAllPrintProductsByCategory(category.id),
-        checkCategoryClassificationStatus(category.id),
       ]);
+
+      console.log('[Ben]: Types result:', typesResult);
+      console.log('[Ben]: Products result:', productsResult);
       
-      setProductTypes(typesResult.filter(type => type.category_id === category.id));
-      setProducts(productsResult);
-      setClassificationStatus(statusResult);
+      if (typesResult.success) {
+        // Filter product types to only show those for the current category
+        const categoryTypes = typesResult.data.filter(type => type.category_id === category.id);
+        setProductTypes(categoryTypes);
+        
+        // Set default selected product type based on available types
+        const availableTypes = categoryTypes.filter(type => type.id !== 0);
+        if (availableTypes.length > 0) {
+          // If there are product types available, select the first one as default
+          setSelectedProductType(availableTypes[0].id);
+        } else {
+          // If no product types available, set to empty string (will show "None")
+          setSelectedProductType("");
+        }
+        
+        console.log('Loaded product types for category:', {
+          categoryId: category.id,
+          categoryName: category.name,
+          totalTypes: typesResult.data.length,
+          categoryTypes: categoryTypes.length,
+          availableTypes: availableTypes.length
+        });
+      }
+      
+      if (productsResult.success) {
+        setProducts(productsResult.data);
+        updateLocalClassificationStatus(productsResult.data);
+        
+        console.log('Loaded products for category:', {
+          categoryId: category.id,
+          totalProducts: productsResult.data.length,
+          classifiedProducts: productsResult.data.filter(p => p.type_id > 0).length
+        });
+      }
     } catch (error) {
-      console.error("Error loading data:", error);
+      console.error("Failed to load data:", error);
     } finally {
       setLoading(false);
     }
+  };
+
+  // Debug function to check backend state
+  const debugBackendState = async () => {
+    try {
+      console.log('=== DEBUGGING BACKEND STATE ===');
+      console.log('Current category:', { id: category.id, name: category.name });
+      console.log('Current local product types:', productTypes.map(t => ({ id: t.id, name: t.name, category_id: t.category_id })));
+      console.log('Current local products:', products.map(p => ({ id: p.id, name: p.name, type_id: p.type_id })));
+      
+      // Check product types from backend
+      const backendTypes = await fetchAllProductTypes();
+      console.log('Backend product types (all):', backendTypes.map(t => ({ id: t.id, name: t.name, category_id: t.category_id })));
+      
+      // Check products from backend
+      const backendProducts = await fetchAllPrintProductsByCategory(category.id);
+      console.log('Backend products:', backendProducts.map(p => ({ id: p.id, name: p.name, type_id: p.type_id })));
+      
+      // Check for mismatches
+      const mismatches = products.filter(localProduct => {
+        const backendProduct = backendProducts.find(bp => bp.id === localProduct.id);
+        if (!backendProduct) {
+          console.log(`Product ${localProduct.id} not found in backend`);
+          return true;
+        }
+        if (backendProduct.type_id !== localProduct.type_id) {
+          console.log(`Type ID mismatch for product ${localProduct.id}: local=${localProduct.type_id}, backend=${backendProduct.type_id}`);
+          return true;
+        }
+        return false;
+      });
+      
+      console.log('Mismatches found:', mismatches.length);
+      if (mismatches.length > 0) {
+        console.log('Mismatched products:', mismatches);
+      }
+      
+      // Show summary
+      console.log('=== SUMMARY ===');
+      console.log(`Category: ${category.name} (ID: ${category.id})`);
+      console.log(`Product Types: ${productTypes.length} local, ${backendTypes.length} total in system`);
+      console.log(`Products: ${products.length} local, ${backendProducts.length} in backend`);
+      console.log(`Category-specific types: ${productTypes.filter(t => t.category_id === category.id).length}`);
+      console.log('=== END DEBUG ===');
+    } catch (error) {
+      console.error('Error debugging backend state:', error);
+    }
+  };
+
+  // Update local classification status based on current products
+  const updateLocalClassificationStatus = (currentProducts) => {
+    const totalProducts = currentProducts.length;
+    const classifiedProducts = currentProducts.filter(p => p.type_id > 0).length;
+    const allClassified = totalProducts > 0 && classifiedProducts === totalProducts;
+    
+    const newStatus = {
+      total_products: totalProducts,
+      classified_products: classifiedProducts,
+      all_classified: allClassified
+    };
+    
+    setLocalClassificationStatus(newStatus);
   };
 
   // Drag and Drop handlers
@@ -117,7 +231,7 @@ const ProductClassificationView = ({ category, onBack, onCategoryUpdate }) => {
   const handleDrop = async (e) => {
     e.preventDefault();
     if (!selectedProductType) {
-      alert("Please select a product type first!");
+      alert("Please select a product type first");
       return;
     }
 
@@ -127,13 +241,27 @@ const ProductClassificationView = ({ category, onBack, onCategoryUpdate }) => {
     if (product) {
       try {
         setLoading(true);
+        
         await assignProductToType(productId, selectedProductType);
-        await loadData();
-        if (onCategoryUpdate) onCategoryUpdate();
+        
+        // Update local state immediately for better UX
+        const updatedProducts = products.map(p => 
+          p.id === productId ? { ...p, type_id: selectedProductType } : p
+        );
+        setProducts(updatedProducts);
+        updateLocalClassificationStatus(updatedProducts);
+        
         alert(`Product "${product.name}" has been classified to "${productTypes.find(t => t.id === selectedProductType)?.name}"`);
       } catch (error) {
         console.error("Error assigning product via drag & drop:", error);
         alert("Failed to classify product!");
+        
+        // If there was an error, revert the local state
+        const revertedProducts = products.map(p => 
+          p.id === productId ? { ...p, type_id: product.type_id } : p
+        );
+        setProducts(revertedProducts);
+        updateLocalClassificationStatus(revertedProducts);
       } finally {
         setLoading(false);
       }
@@ -158,11 +286,24 @@ const ProductClassificationView = ({ category, onBack, onCategoryUpdate }) => {
         formData.append("image", productTypeForm.imageFile);
       }
 
-      await createProductType(formData);
+      const result = await createProductType(formData);
       setCreatingProductType(false);
       setProductTypeForm({ name: "", description: "", imageFile: null });
-      await loadData();
-      if (onCategoryUpdate) onCategoryUpdate();
+      
+      // Add the new product type to local state
+      if (result && result.id) {
+        const newProductType = {
+          id: result.id,
+          name: result.name,
+          description: result.description,
+          image: result.image,
+          category_id: category.id
+        };
+        setProductTypes(prev => [...prev, newProductType]);
+      }
+      
+      // Don't call onCategoryUpdate here - the local state is already updated
+      // The parent will get updated when the user navigates back
     } catch (error) {
       console.error("Failed to create product type:", error);
       alert("Failed to create product type!");
@@ -189,10 +330,18 @@ const ProductClassificationView = ({ category, onBack, onCategoryUpdate }) => {
         imageFile: productForm.imageFile,
       });
       
+      // Update local state immediately
+      setProductTypes(prev => prev.map(type => 
+        type.id === editingProduct.id 
+          ? { ...type, description: productForm.description || type.description }
+          : type
+      ));
+      
       setEditingProduct(null);
       setProductForm({ description: "", imageFile: null, assignToType: null });
-      await loadData();
-      if (onCategoryUpdate) onCategoryUpdate();
+      
+      // Don't call onCategoryUpdate here - the local state is already updated
+      // The parent will get updated when the user navigates back
     } catch (error) {
       console.error("Failed to update product type:", error);
       alert("Failed to update product type!");
@@ -207,11 +356,17 @@ const ProductClassificationView = ({ category, onBack, onCategoryUpdate }) => {
     try {
       setLoading(true);
       await deleteProductType(typeId);
-      await loadData();
-      if (onCategoryUpdate) onCategoryUpdate();
+      
+      // Update local state immediately
+      setProductTypes(prev => prev.filter(type => type.id !== typeId));
+      
+      // If the deleted type was selected, clear the selection
       if (selectedProductType === typeId) {
         setSelectedProductType("");
       }
+      
+      // Don't call onCategoryUpdate here - the local state is already updated
+      // The parent will get updated when the user navigates back
     } catch (error) {
       console.error("Failed to delete product type:", error);
       alert("Failed to delete product type!");
@@ -221,10 +376,8 @@ const ProductClassificationView = ({ category, onBack, onCategoryUpdate }) => {
   };
 
   // Filter out the unclassified type (ID 0) from product type options
+  console.log('[Ben]: Debugging product types:', productTypes);
   const filteredProductTypes = productTypes.filter(type => type.id !== 0);
-
-  // Get the unclassified type for display purposes
-  const unclassifiedType = productTypes.find(type => type.id === 0);
 
   // Product handlers
   const handleEditProduct = (product) => {
@@ -247,9 +400,23 @@ const ProductClassificationView = ({ category, onBack, onCategoryUpdate }) => {
         if (productForm.assignToType) {
           // Assign to a specific type
           await assignProductToType(selectedProduct.id, productForm.assignToType);
+          
+          // Update local state immediately
+          const updatedProducts = products.map(p => 
+            p.id === selectedProduct.id ? { ...p, type_id: productForm.assignToType } : p
+          );
+          setProducts(updatedProducts);
+          updateLocalClassificationStatus(updatedProducts);
         } else if (selectedProduct.type_id && selectedProduct.type_id !== 0) {
           // Unassign from current type (but not from unclassified)
           await unassignProductFromType(selectedProduct.id);
+          
+          // Update local state immediately
+          const updatedProducts = products.map(p => 
+            p.id === selectedProduct.id ? { ...p, type_id: 0 } : p
+          );
+          setProducts(updatedProducts);
+          updateLocalClassificationStatus(updatedProducts);
         }
         // If assignToType is null/empty and current type is 0, no action needed
       }
@@ -271,44 +438,12 @@ const ProductClassificationView = ({ category, onBack, onCategoryUpdate }) => {
       
       setSelectedProduct(null);
       setProductForm({ description: "", imageFile: null, assignToType: null });
-      await loadData();
-      if (onCategoryUpdate) onCategoryUpdate();
+      
+      // Don't call onCategoryUpdate here - let the local state handle the UI
+      // The parent will get updated when the user navigates back or when we explicitly need to sync
     } catch (error) {
       console.error("Failed to update product:", error);
       alert("Failed to update product!");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleAssignProduct = async () => {
-    if (!assigningProduct || !selectedTypeId) return;
-
-    try {
-      setLoading(true);
-      await assignProductToType(assigningProduct.id, selectedTypeId);
-      setAssigningProduct(null);
-      setSelectedTypeId("");
-      await loadData();
-      if (onCategoryUpdate) onCategoryUpdate();
-    } catch (error) {
-      console.error("Error assigning product:", error);
-      const errorMessage = error.response?.data?.error || error.message || "Failed to assign product";
-      alert(`Error: ${errorMessage}`);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleUnassignProduct = async (productId) => {
-    try {
-      setLoading(true);
-      await unassignProductFromType(productId);
-      await loadData();
-      if (onCategoryUpdate) onCategoryUpdate();
-    } catch (error) {
-      console.error("Error unassigning product:", error);
-      alert("Failed to unassign product!");
     } finally {
       setLoading(false);
     }
@@ -339,6 +474,14 @@ const ProductClassificationView = ({ category, onBack, onCategoryUpdate }) => {
     ? products.filter(p => p.type_id === selectedProductType)
     : [];
 
+  // Function to sync changes with parent when navigating back
+  const handleBackWithSync = () => {
+    // Call onCategoryUpdate to ensure parent has latest data
+    if (onCategoryUpdate) onCategoryUpdate();
+    // Then navigate back
+    onBack();
+  };
+
   const handleSyncProducts = async () => {
     if (!confirm("Are you sure you want to sync products for this category? This will re-fetch and update all products from Sinalite API.")) {
       return;
@@ -346,19 +489,28 @@ const ProductClassificationView = ({ category, onBack, onCategoryUpdate }) => {
     
     try {
       setLoading(true);
+      console.log('Starting sync for category:', category.id, category.name);
+      
       const syncResult = await syncProductsForCategory(category.id);
+      console.log('Sync result:', syncResult);
       
       // Show detailed sync results
       const message = `Sync completed successfully!\n\n` +
-        `Products added: ${syncResult.products_added}\n` +
-        `Products updated: ${syncResult.products_updated}\n` +
-        `Total products: ${syncResult.total_products}`;
+        `Products added: ${syncResult.products_added || 0}\n` +
+        `Products updated: ${syncResult.products_updated || 0}\n` +
+        `Total products: ${syncResult.total_products || 0}`;
       
       alert(message);
       
-      // Reload data to show updated products
+      // Reload data to show updated products from sync
+      console.log('Reloading data after sync...');
       await loadData();
-      if (onCategoryUpdate) onCategoryUpdate();
+      
+      // Update parent component
+      if (onCategoryUpdate) {
+        console.log('Calling onCategoryUpdate...');
+        onCategoryUpdate();
+      }
       
     } catch (error) {
       console.error("Error syncing products:", error);
@@ -401,10 +553,10 @@ const ProductClassificationView = ({ category, onBack, onCategoryUpdate }) => {
             }}
           >
             {category.name}
-            {classificationStatus && (
+            {localClassificationStatus && (
               <Chip
-                label={`${classificationStatus.classified_products}/${classificationStatus.total_products} classified`}
-                color={classificationStatus.all_classified ? "success" : "warning"}
+                label={`${localClassificationStatus.classified_products || 0}/${localClassificationStatus.total_products || 0} classified`}
+                color={localClassificationStatus.all_classified ? "success" : "warning"}
                 variant="filled"
                 size="medium"
                 sx={{ 
@@ -438,9 +590,35 @@ const ProductClassificationView = ({ category, onBack, onCategoryUpdate }) => {
             >
               {loading ? "Syncing..." : "Sync Products"}
             </Button>
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={debugBackendState}
+              disabled={loading}
+              sx={{
+                borderRadius: 2,
+                px: 2,
+                py: 0.5,
+                fontWeight: 500,
+                borderWidth: 1.5,
+                fontSize: "0.75rem",
+                textTransform: "none",
+                backgroundColor: "#ffeb3b",
+                borderColor: "#f57f17",
+                "&:hover": {
+                  borderWidth: 2,
+                  transform: "translateY(-1px)",
+                  boxShadow: 1,
+                  backgroundColor: "#fff59d",
+                },
+                transition: "all 0.2s ease-in-out",
+              }}
+            >
+              🐛 Debug
+            </Button>
           </Typography>
           
-          {classificationStatus && !classificationStatus.all_classified && (
+          {localClassificationStatus && !localClassificationStatus.all_classified && (
             <Alert 
               severity="warning" 
               sx={{ 
@@ -460,7 +638,7 @@ const ProductClassificationView = ({ category, onBack, onCategoryUpdate }) => {
         
         <Button 
           variant="outlined" 
-          onClick={onBack} 
+          onClick={handleBackWithSync} 
           startIcon={<ArrowBackIcon />}
           sx={{
             borderRadius: 2,
@@ -502,14 +680,18 @@ const ProductClassificationView = ({ category, onBack, onCategoryUpdate }) => {
           >
             Product Types
             <Chip 
-              label={`${productTypes.length} available`}
+              label={filteredProductTypes.length === 0 
+                ? "None available" 
+                : `${filteredProductTypes.length} available`
+              }
               size="small"
-              color="primary"
-              variant="outlined"
+              color={filteredProductTypes.length === 0 ? "error" : "primary"}
+              variant={filteredProductTypes.length === 0 ? "filled" : "outlined"}
             />
           </Typography>
           <Button
             variant="contained"
+            color="primary"
             startIcon={<AddIcon />}
             onClick={() => setCreatingProductType(true)}
             sx={{
@@ -528,6 +710,24 @@ const ProductClassificationView = ({ category, onBack, onCategoryUpdate }) => {
             Add Product Type
           </Button>
         </Box>
+
+        {/* Help message when no product types exist */}
+        {filteredProductTypes.length === 0 && (
+          <Alert 
+            severity="info" 
+            sx={{ 
+              mb: 3,
+              borderRadius: 2,
+              "& .MuiAlert-icon": {
+                alignItems: "center"
+              }
+            }}
+          >
+            <Typography variant="body2" sx={{ fontWeight: 500 }}>
+              No product types found for this category. Create a product type first to start organizing your products.
+            </Typography>
+          </Alert>
+        )}
 
         <Grid container spacing={3}>
           {/* Left Side - Product Type Selection and Details (1/4 width) */}
@@ -549,7 +749,7 @@ const ProductClassificationView = ({ category, onBack, onCategoryUpdate }) => {
                   size="medium"
                 >
                   <MenuItem value="">
-                   { /**Choose a product type**/}
+                    {filteredProductTypes.length > 0 ? "" : ""}
                   </MenuItem>
                   {filteredProductTypes.map((type) => (
                     <MenuItem key={type.id} value={type.id}>
@@ -686,8 +886,8 @@ const ProductClassificationView = ({ category, onBack, onCategoryUpdate }) => {
                     boxShadow: 1, 
                     borderRadius: 2,
                     height: "100%",
-                    border: "2px dashed #e0e0e0",
-                    backgroundColor: "#fafafa"
+                    border: filteredProductTypes.length === 0 ? "2px solid #f44336" : "2px dashed #e0e0e0",
+                    backgroundColor: filteredProductTypes.length === 0 ? "#ffebee" : "#fafafa"
                   }}>
                     <CardContent sx={{ 
                       p: 2.5, 
@@ -712,12 +912,12 @@ const ProductClassificationView = ({ category, onBack, onCategoryUpdate }) => {
                             display: "flex",
                             alignItems: "center",
                             justifyContent: "center",
-                            backgroundColor: "#f0f0f0",
-                            color: "#999",
+                            backgroundColor: filteredProductTypes.length === 0 ? "#ffcdd2" : "#f0f0f0",
+                            color: filteredProductTypes.length === 0 ? "#d32f2f" : "#999",
                             fontSize: "2rem"
                           }}
                         >
-                          📋
+                          {filteredProductTypes.length > 0 ? "📋" : "➕"}
                         </Box>
                         <Typography 
                           variant="h6" 
@@ -725,18 +925,18 @@ const ProductClassificationView = ({ category, onBack, onCategoryUpdate }) => {
                           sx={{ 
                             mb: 1, 
                             fontWeight: 600,
-                            color: "text.secondary",
+                            color: filteredProductTypes.length === 0 ? "error.main" : "text.secondary",
                             minHeight: "1.5em",
                             display: "flex",
                             alignItems: "center",
                             justifyContent: "center"
                           }}
                         >
-                          No Type Selected
+                          {filteredProductTypes.length > 0 ? "No Type Selected" : "No Product Types"}
                         </Typography>
                         <Typography 
                           variant="body2" 
-                          color="text.disabled" 
+                          color={filteredProductTypes.length === 0 ? "error.main" : "text.disabled"}
                           align="center"
                           sx={{ 
                             lineHeight: 1.4,
@@ -747,7 +947,10 @@ const ProductClassificationView = ({ category, onBack, onCategoryUpdate }) => {
                             justifyContent: "center"
                           }}
                         >
-                          Select a product type from the dropdown above to view its details and manage products.
+                          {filteredProductTypes.length > 0 
+                            ? "Select a product type from the dropdown above to view its details and manage products."
+                            : "Create a product type first to start organizing your products."
+                          }
                         </Typography>
                       </Box>
                       <Box sx={{ 
@@ -763,10 +966,12 @@ const ProductClassificationView = ({ category, onBack, onCategoryUpdate }) => {
                           disabled
                           sx={{ 
                             minWidth: 80,
-                            borderRadius: 1.5
+                            borderRadius: 1.5,
+                            borderColor: filteredProductTypes.length === 0 ? "error.main" : undefined,
+                            color: filteredProductTypes.length === 0 ? "error.main" : undefined
                           }}
                         >
-                          Edit
+                          {filteredProductTypes.length > 0 ? "Edit" : "Create"}
                         </Button>
                         <Button
                           size="small"
@@ -774,10 +979,12 @@ const ProductClassificationView = ({ category, onBack, onCategoryUpdate }) => {
                           disabled
                           sx={{ 
                             minWidth: 80,
-                            borderRadius: 1.5
+                            borderRadius: 1.5,
+                            borderColor: filteredProductTypes.length === 0 ? "error.main" : undefined,
+                            color: filteredProductTypes.length === 0 ? "error.main" : undefined
                           }}
                         >
-                          Delete
+                          {filteredProductTypes.length === 0 ? "Manage" : "Delete"}
                         </Button>
                       </Box>
                     </CardContent>
@@ -794,19 +1001,32 @@ const ProductClassificationView = ({ category, onBack, onCategoryUpdate }) => {
               sx={{ 
                 mb: 3, 
                 fontWeight: 600,
-                color: "text.primary",
+                color: filteredProductTypes.length === 0 && !selectedType ? "error.main" : "text.primary",
                 display: "flex",
                 alignItems: "center",
                 gap: 1
               }}
             >
-              Products in {selectedType?.name || "Selected Type"}
+              {selectedType 
+                ? `Products In ${selectedType.name}`
+                : filteredProductTypes.length === 0 
+                  ? "No Product Types Available"
+                  : "Products In Selected Type"
+              }
               {selectedType && (
                 <Chip 
                   label={`${productsInSelectedType.length} product${productsInSelectedType.length !== 1 ? 's' : ''}`}
                   size="small"
                   color="primary"
                   variant="outlined"
+                />
+              )}
+              {filteredProductTypes.length === 0 && (
+                <Chip 
+                  label="Create a product type first"
+                  size="small"
+                  color="error"
+                  variant="filled"
                 />
               )}
             </Typography>
@@ -924,12 +1144,25 @@ const ProductClassificationView = ({ category, onBack, onCategoryUpdate }) => {
                 }}
               >
                 <Box sx={{ textAlign: "center", color: "text.secondary" }}>
-                  <Typography variant="body2" sx={{ mb: 1 }}>
-                    Select a product type to view its products
-                  </Typography>
-                  <Typography variant="caption" color="text.disabled">
-                    and enable drag & drop classification.
-                  </Typography>
+                  {filteredProductTypes.length === 0 ? (
+                    <>
+                      <Typography variant="body2" sx={{ mb: 1, color: "error.main" }}>
+                        No product types available for this category
+                      </Typography>
+                      <Typography variant="caption" color="error.main">
+                        Create a product type first to start organizing products.
+                      </Typography>
+                    </>
+                  ) : (
+                    <>
+                      <Typography variant="body2" sx={{ mb: 1 }}>
+                        Select a product type to view its products
+                      </Typography>
+                      <Typography variant="caption" color="text.disabled">
+                        and enable drag & drop classification.
+                      </Typography>
+                    </>
+                  )}
                 </Box>
               </Box>
             )}
@@ -959,124 +1192,164 @@ const ProductClassificationView = ({ category, onBack, onCategoryUpdate }) => {
           />
         </Typography>
         
-        <Grid container spacing={2.5}>
-          {products.map((product) => (
-            <Grid item xs={12} sm={6} md={4} key={product.id}>
-              <Card 
-                sx={{ 
-                  cursor: "pointer",
-                  border: isProductClassified(product) ? "2px solid #4caf50" : "2px solid #f44336",
-                  borderRadius: 2.5,
-                  boxShadow: 1,
-                  "&:hover": {
-                    boxShadow: 4,
-                    transform: "translateY(-3px)",
-                    transition: "all 0.3s ease-in-out",
-                    borderColor: isProductClassified(product) ? "#2e7d32" : "#d32f2f",
-                  },
-                  transition: "all 0.2s ease-in-out",
-                }}
-                onClick={() => handleEditProduct(product)}
-                draggable
-                onDragStart={(e) => handleDragStart(e, product)}
+        {products.length === 0 ? (
+          <Box sx={{ 
+            textAlign: "center", 
+            py: 6, 
+            color: "text.secondary",
+            border: "2px dashed #e0e0e0",
+            borderRadius: 3,
+            backgroundColor: "#fafafa"
+          }}>
+            <Typography variant="h6" sx={{ mb: 2, color: "text.primary" }}>
+              No products found for this category
+            </Typography>
+            <Typography variant="body2" sx={{ mb: 3 }}>
+              {filteredProductTypes.length === 0 
+                ? "Create a product type first, then sync products from the API."
+                : "Use the 'Sync Products' button above to fetch products from the API."
+              }
+            </Typography>
+            {filteredProductTypes.length === 0 && (
+              <Button
+                variant="contained"
+                color="primary"
+                startIcon={<AddIcon />}
+                onClick={() => setCreatingProductType(true)}
+                sx={{ mr: 2 }}
               >
-                <CardContent sx={{ py: 2.5, px: 2.5 }}>
-                  <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", mb: 1.5 }}>
-                    <Typography 
-                      variant="subtitle1" 
-                      noWrap 
-                      sx={{ 
-                        fontWeight: 600,
-                        color: "text.primary",
-                        maxWidth: "70%"
-                      }}
-                    >
-                      {product.name}
-                    </Typography>
-                    <Chip
-                      label={isProductClassified(product) ? "Classified" : "Unclassified"}
-                      color={isProductClassified(product) ? "success" : "error"}
-                      size="small"
-                      sx={{ 
-                        borderRadius: 1.5,
-                        fontWeight: 500,
-                        fontSize: "0.75rem"
-                      }}
-                    />
-                  </Box>
-                  
-                  <Typography 
-                    variant="body2" 
-                    color="text.secondary" 
-                    noWrap
-                    sx={{ 
-                      mb: 1,
-                      fontSize: "0.875rem"
-                    }}
-                  >
-                    SKU: {product.sku}
-                  </Typography>
-                  
-                  {isProductClassified(product) && (
-                    <Box sx={{ mb: 1.5 }}>
+                Create Product Type
+              </Button>
+            )}
+            <Button
+              variant="outlined"
+              onClick={handleSyncProducts}
+              disabled={loading}
+              startIcon={loading ? <CircularProgress size={20} /> : <SyncIcon />}
+            >
+              {loading ? "Syncing..." : "Sync Products"}
+            </Button>
+          </Box>
+        ) : (
+          <Grid container spacing={2.5}>
+            {products.map((product) => (
+              <Grid item xs={12} sm={6} md={4} key={product.id}>
+                <Card 
+                  sx={{ 
+                    cursor: "pointer",
+                    border: isProductClassified(product) ? "2px solid #4caf50" : "2px solid #f44336",
+                    borderRadius: 2.5,
+                    boxShadow: 1,
+                    "&:hover": {
+                      boxShadow: 4,
+                      transform: "translateY(-3px)",
+                      transition: "all 0.3s ease-in-out",
+                      borderColor: isProductClassified(product) ? "#2e7d32" : "#d32f2f",
+                    },
+                    transition: "all 0.2s ease-in-out",
+                  }}
+                  onClick={() => handleEditProduct(product)}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, product)}
+                >
+                  <CardContent sx={{ py: 2.5, px: 2.5 }}>
+                    <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", mb: 1.5 }}>
+                      <Typography 
+                        variant="subtitle1" 
+                        noWrap 
+                        sx={{ 
+                          fontWeight: 600,
+                          color: "text.primary",
+                          maxWidth: "70%"
+                        }}
+                      >
+                        {product.name}
+                      </Typography>
                       <Chip
-                        label={`Type: ${getProductTypeName(product.type_id)}`}
+                        label={isProductClassified(product) ? "Classified" : "Unclassified"}
+                        color={isProductClassified(product) ? "success" : "error"}
                         size="small"
-                        color="primary"
-                        variant="outlined"
                         sx={{ 
                           borderRadius: 1.5,
+                          fontWeight: 500,
                           fontSize: "0.75rem"
                         }}
                       />
                     </Box>
-                  )}
-                  
-                  <Box sx={{ 
-                    display: "flex", 
-                    alignItems: "center", 
-                    gap: 1,
-                    mt: 2,
-                    pt: 1.5,
-                    borderTop: "1px solid #f0f0f0"
-                  }}>
+                    
                     <Typography 
-                      variant="caption" 
+                      variant="body2" 
                       color="text.secondary" 
+                      noWrap
                       sx={{ 
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 0.5,
-                        fontSize: "0.75rem"
+                        mb: 1,
+                        fontSize: "0.875rem"
                       }}
                     >
-                      💡 Click to edit
+                      SKU: {product.sku}
                     </Typography>
-                    <Typography 
-                      variant="caption" 
-                      color="text.secondary"
-                      sx={{ fontSize: "0.75rem" }}
-                    >
-                      •
-                    </Typography>
-                    <Typography 
-                      variant="caption" 
-                      color="text.secondary"
-                      sx={{ 
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 0.5,
-                        fontSize: "0.75rem"
-                      }}
-                    >
-                      Drag to classify
-                    </Typography>
-                  </Box>
-                </CardContent>
-              </Card>
-            </Grid>
-          ))}
-        </Grid>
+                    
+                    {isProductClassified(product) && (
+                      <Box sx={{ mb: 1.5 }}>
+                        <Chip
+                          label={`Type: ${getProductTypeName(product.type_id)}`}
+                          size="small"
+                          color="primary"
+                          variant="outlined"
+                          sx={{ 
+                            borderRadius: 1.5,
+                            fontSize: "0.75rem"
+                          }}
+                        />
+                      </Box>
+                    )}
+                    
+                    <Box sx={{ 
+                      display: "flex", 
+                      alignItems: "center", 
+                      gap: 1,
+                      mt: 2,
+                      pt: 1.5,
+                      borderTop: "1px solid #f0f0f0"
+                    }}>
+                      <Typography 
+                        variant="caption" 
+                        color="text.secondary" 
+                        sx={{ 
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 0.5,
+                          fontSize: "0.75rem"
+                        }}
+                      >
+                        💡 Click to edit
+                      </Typography>
+                      <Typography 
+                        variant="caption" 
+                        color="text.secondary"
+                        sx={{ fontSize: "0.75rem" }}
+                      >
+                        •
+                      </Typography>
+                      <Typography 
+                        variant="caption" 
+                        color="text.secondary"
+                        sx={{ 
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 0.5,
+                          fontSize: "0.75rem"
+                        }}
+                      >
+                        Drag to classify
+                      </Typography>
+                    </Box>
+                  </CardContent>
+                </Card>
+              </Grid>
+            ))}
+          </Grid>
+        )}
       </Paper>
 
       {/* Create Product Type Dialog */}
@@ -1201,36 +1474,6 @@ const ProductClassificationView = ({ category, onBack, onCategoryUpdate }) => {
           <Button onClick={() => setSelectedProduct(null)}>Cancel</Button>
           <Button onClick={handleUpdateProduct} variant="contained">
             Update
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Assign Product Dialog */}
-      <Dialog open={!!assigningProduct} onClose={() => setAssigningProduct(null)} maxWidth="sm" fullWidth>
-        <DialogTitle>Assign Product to Type</DialogTitle>
-        <DialogContent>
-          <Typography variant="body1" sx={{ mb: 2 }}>
-            Assign "{assigningProduct?.name}" to a product type:
-          </Typography>
-          <FormControl fullWidth>
-            <InputLabel>Product Type</InputLabel>
-            <Select
-              value={selectedTypeId}
-              label="Product Type"
-              onChange={(e) => setSelectedTypeId(e.target.value)}
-            >
-              {filteredProductTypes.map((type) => (
-                <MenuItem key={type.id} value={type.id}>
-                  {type.name}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setAssigningProduct(null)}>Cancel</Button>
-          <Button onClick={handleAssignProduct} variant="contained" disabled={!selectedTypeId}>
-            Assign
           </Button>
         </DialogActions>
       </Dialog>

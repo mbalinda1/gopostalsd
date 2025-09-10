@@ -21,6 +21,10 @@ def create_server(config="development"):
     server = Flask(__name__)
     # Enable Cross-Origin Resource Sharing (CORS)
     CORS(server)
+    
+    # Add startup timestamp for health checks
+    from datetime import datetime
+    server.config['START_TIME'] = datetime.utcnow().isoformat()
 
     # Load configuration based on environment
     if config == "testing":
@@ -49,7 +53,6 @@ def create_server(config="development"):
     # Initialize file storage for image storing
     filestorage.init_app(server)
     logger.info(f"File Storage: {filestorage.current_backend}")
-
     
     # Register API routes
     from server.routes import register_routes

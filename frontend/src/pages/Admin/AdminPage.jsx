@@ -80,9 +80,10 @@ const AdminPage = () => {
     setSelectedCategory(null);
   };
 
-  const handleCategoryUpdate = () => {
-    // Reload categories when returning from classification view
-    loadProductCategories();
+  const handleCategoryUpdate = async () => {
+    // Simply reload categories when returning from classification view
+    // No need to update selectedCategory since we're navigating away from it
+    await loadProductCategories();
   };
 
   const filteredCategories = productCategories.filter((category) => {

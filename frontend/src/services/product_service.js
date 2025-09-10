@@ -56,10 +56,10 @@ export const fetchAllPrintProductsByCategory = async (category_id) => {
     try{
         const response = await axios.get(`${API_BASE_URL}/print/products/${category_id}/all`)
         
-        return response.data
+        return { success: true, data: response.data }
     }catch (error){
         console.error("Error fetching products: ", error)
-        return []
+        return { success: false, data: [] }
     }
 }
 
@@ -125,10 +125,10 @@ export const updatePrintProductDetails = async (productDetails) => {
 export const fetchAllProductTypes = async () => {
   try {
     const response = await axios.get(`${API_BASE_URL}/print/product-types`);
-    return response.data;
+    return { success: true, data: response.data };
   } catch (error) {
     console.error("Error fetching product types: ", error);
-    return [];
+    return { success: false, data: [] };
   }
 };
 
@@ -224,15 +224,7 @@ export const unassignProductFromType = async (productId) => {
   }
 };
 
-export const checkCategoryClassificationStatus = async (categoryId) => {
-  try {
-    const response = await axios.get(`${API_BASE_URL}/print/categories/${categoryId}/classification-status`);
-    return response.data;
-  } catch (error) {
-    console.error("Error checking classification status: ", error);
-    throw error;
-  }
-};
+
 
 export const syncProductsForCategory = async (categoryId) => {
   try {
@@ -244,6 +236,16 @@ export const syncProductsForCategory = async (categoryId) => {
       console.error("Error response status:", error.response.status);
       console.error("Error response data:", error.response.data);
     }
+    throw error;
+  }
+};
+
+export const fetchAllVendors = async () => {
+  try {
+    const response = await axios.get(`${API_BASE_URL}/print/vendors`);
+    return response.data;
+  } catch (error) {
+    console.error("Error fetching vendors: ", error);
     throw error;
   }
 };
