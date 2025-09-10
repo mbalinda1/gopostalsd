@@ -656,7 +656,7 @@ const ProductClassificationView = ({ category, onBack, onCategoryUpdate }) => {
           <Grid item xs={12} md={3}>
             <Box sx={{ 
               width: { xs: "100%", sm: 600 },
-              height: 400, // Fixed height - never changes
+              height: '100%', // Fixed height - never changes
               display: "flex",
               flexDirection: "column"
             }}>
@@ -704,7 +704,7 @@ const ProductClassificationView = ({ category, onBack, onCategoryUpdate }) => {
                     }}>
                       <Box sx={{ 
                         display: "flex", 
-                        flexDirection: "column", 
+                        flexDirection: "row", 
                         alignItems: "center", 
                         mb: 3 
                       }}>
@@ -730,6 +730,7 @@ const ProductClassificationView = ({ category, onBack, onCategoryUpdate }) => {
                             }}
                           />
                         </Box>
+                        <Box>
                         <Typography 
                           variant="h6" 
                           align="center" 
@@ -760,6 +761,7 @@ const ProductClassificationView = ({ category, onBack, onCategoryUpdate }) => {
                         >
                           {getProductDescription(selectedType)}
                         </Typography>
+                        </Box>
                       </Box>
                       <Box sx={{ 
                         display: "flex", 
