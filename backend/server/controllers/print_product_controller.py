@@ -359,13 +359,12 @@ class PrintProductController:
 
     @staticmethod
     def get_enabled_products_by_category(category_id: int) -> Result:
-        """Fetch print products from Sinalite API by category ID, ensuring category is enabled in the database"""
+        """Fetch print products from database by category ID, ensuring category is enabled"""
         result = Result()
 
-        # Three conditions for a product to be considered enabled
+        # Two conditions for a product to be considered enabled
         # 1. The category must be enabled in the database
-        # 2. The product must be enabled in the Sinalite API
-        # 3. The product must be present in the database (You can look it up by sku)
+        # 2. The product must be present in the database
 
         table_is_empty = (PrintProductCategory.query.first() is None) # TODO: Add test case
         if(table_is_empty):
@@ -379,34 +378,11 @@ class PrintProductController:
             result.error = PrintProductErrors.PRINT_PRODUCT_CATEGORY_NOT_FOUND.value
             return result
         
-        # Fetch all products from sinalite
-        all_products = sinalite.get_products()
-
-        # Filter products by category name and enabled status first
-        category_products = [
-            product for product in all_products 
-            if product['category'] == local_category.name and product.get('enabled', 0) == 1
-        ]
+        # Get products from database for this category
+        db_products = PrintProduct.query.filter_by(category_id=category_id).all()
         
-        if not category_products:
-            result.data = []
-            return result
-        
-        # Extract all product IDs for batch database lookup
-        product_ids = [product['id'] for product in category_products]
-        
-        # Batch query: get all products with matching IDs in one database call
-        # Note: ID is the primary key, so it's automatically indexed for optimal performance
-        db_products = PrintProduct.query.filter(PrintProduct.id.in_(product_ids)).all()
-        
-        # Create a set of existing IDs for O(1) lookup
-        existing_ids = {product.id for product in db_products}
-        
-        # Filter products that exist in our database
-        filtered_products = [
-            product for product in category_products 
-            if product['id'] in existing_ids
-        ]
+        # Convert to dictionary format to maintain API compatibility
+        filtered_products = [product.to_dict() for product in db_products]
 
         # Always return a list even if empty
         result.data = filtered_products

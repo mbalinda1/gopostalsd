@@ -54,6 +54,18 @@ def create_server(config="development"):
     filestorage.init_app(server)
     logger.info(f"File Storage: {filestorage.current_backend}")
     
+    # Initialize pricing controller
+    from server.controllers.pricing_controller import PricingController
+    from server.thirdparty.sinalite import SinaliteAdapter
+    
+    # Create Sinalite adapter and pricing controller
+    sinalite_adapter = SinaliteAdapter(server)
+    pricing_controller = PricingController(sinalite_adapter)
+    
+    # Store in Flask app context for use in API routes
+    server.extensions['pricing_controller'] = pricing_controller
+    server.extensions['sinalite_adapter'] = sinalite_adapter
+    
     # Register API routes
     from server.routes import register_routes
     register_routes(server)

@@ -11,6 +11,7 @@ import SpinnerOverlay from "../../components/SpinnerOverlay";
 import ProductCategoryList from "./components/ProductCategoryList";
 import ProductListHeader from "./components/ProductListHeader";
 import ProductList from "./components/ProductList";
+import ProductDetailPage from "./components/ProductDetailPage";
 
 import { fetchEnabledPrintProductCategories } from '../../services/product_service';
 
@@ -18,6 +19,7 @@ const ShopPage = () => {
 
     const  [productCategories, setProductCategories] = useState([])
     const  [selectedProductCategory, setSelectedProductCategrory] = useState(null)
+    const  [selectedProduct, setSelectedProduct] = useState(null)
     const  [products, setProducts] = useState([])
     const  [loading, setLoading] = useState(true)
   
@@ -41,7 +43,16 @@ const ShopPage = () => {
     }
   
     const handleBackToProductCategories = () => {
-      setSelectedProductCategrory(null);
+        setSelectedProductCategrory(null);
+        setSelectedProduct(null);
+    }
+
+    const handleViewProduct = (product) => {
+        setSelectedProduct(product);
+    }
+
+    const handleBackToProducts = () => {
+        setSelectedProduct(null);
     }
   
     return (
@@ -57,7 +68,13 @@ const ShopPage = () => {
         <SpinnerOverlay loading={loading} /> {/* Use SpinnerOverlay for loading state */}
         
         <Box sx={{ flex: 1, mt: "64px", p: 4,}} >
-          {selectedProductCategory ? (
+          {selectedProduct ? (
+            // If a product is selected, display product detail page
+            <ProductDetailPage 
+              product={selectedProduct} 
+              onBack={handleBackToProducts} 
+            />
+          ) : selectedProductCategory ? (
             // If a category is selected, display its products
             <Box sx={{ width: '100%', p: 0 }}>
               <ProductListHeader
@@ -65,7 +82,10 @@ const ShopPage = () => {
                 numberOfProducts={products.length}
                 backToProductCategories={handleBackToProductCategories}
               />
-              <ProductList category={selectedProductCategory} />
+              <ProductList 
+                category={selectedProductCategory} 
+                onViewProduct={handleViewProduct}
+              />
             </Box>
           ) : (
             // Display the enabled categories as cards

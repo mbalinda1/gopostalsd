@@ -2,6 +2,7 @@ from flask import Flask
 from server.config import swagger
 from server.routes.print_product_routes import api as print_products_namespace
 from server.routes.misc_routes import api as misc_blueprint
+from server.routes.pricing_routes import register_pricing_routes
 
 
 def register_routes(server: Flask):
@@ -14,4 +15,7 @@ def register_routes(server: Flask):
     # Register API namespace
     swagger.add_namespace(print_products_namespace, path="/api/print")
     server.register_blueprint(misc_blueprint)
+    
+    # Register pricing routes
+    register_pricing_routes(server)
 

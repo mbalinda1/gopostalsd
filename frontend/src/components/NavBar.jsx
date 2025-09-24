@@ -2,6 +2,7 @@ import React from 'react';
 import { AppBar, Toolbar, Box, Typography, Stack, Button } from '@mui/material';
 import { Link } from 'react-router-dom';
 import logo from '../assets/logo.png';
+import CartIcon from '../pages/Shop/components/CartIcon';
 
 const Navbar = () => {
   return (
@@ -27,7 +28,7 @@ const Navbar = () => {
         </Typography>
 
         {/* Navbar Links */}
-        <Stack direction="row" spacing={2}>
+        <Stack direction="row" spacing={2} alignItems="center">
           <Button
             component={Link}
             to="/"
@@ -48,6 +49,7 @@ const Navbar = () => {
           >
             Admin
           </Button>
+          <CartIcon />
         </Stack>
       </Toolbar>
     </AppBar>
