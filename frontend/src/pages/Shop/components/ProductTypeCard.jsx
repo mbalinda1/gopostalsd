@@ -86,7 +86,7 @@ const ProductTypeCard = ({ productType, onProductClick }) => {
       }}
     >
       {/* Product Type Image - Full Width */}
-      <Box sx={{ position: 'relative', height: 200 }}>
+      <Box sx={{ position: 'relative', height: 200, m: 2 }}>
         <CardMedia
           component="img"
           height="200"
@@ -94,6 +94,8 @@ const ProductTypeCard = ({ productType, onProductClick }) => {
           alt={productType?.name || 'Product Type'}
           sx={{
             objectFit: 'cover',
+            borderRadius: 2,
+            border: '1px solid #e0e0e0',
             transition: 'transform 0.3s ease',
             '&:hover': {
               transform: 'scale(1.05)'
@@ -101,17 +103,6 @@ const ProductTypeCard = ({ productType, onProductClick }) => {
           }}
         />
         
-        {/* Overlay Gradient */}
-        <Box
-          sx={{
-            position: 'absolute',
-            bottom: 0,
-            left: 0,
-            right: 0,
-            height: '50%',
-            background: 'linear-gradient(transparent, rgba(0,0,0,0.7))',
-          }}
-        />
         
         {/* Product Count Badge */}
         {!loading && !error && products.length > 0 && (
