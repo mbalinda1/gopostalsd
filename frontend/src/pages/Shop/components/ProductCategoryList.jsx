@@ -28,7 +28,7 @@ const ProductCategoryList = ({ productCategories, handleProductCategoryClick }) 
           sx={{ 
             fontWeight: 700, 
             mb: 2,
-            background: 'linear-gradient(45deg, #1976d2, #42a5f5)',
+            background: 'linear-gradient(45deg,rgb(0, 0, 0),rgb(7, 59, 102))',
             backgroundClip: 'text',
             WebkitBackgroundClip: 'text',
             WebkitTextFillColor: 'transparent'

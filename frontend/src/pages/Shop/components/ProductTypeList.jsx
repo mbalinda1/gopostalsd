@@ -103,7 +103,7 @@ const ProductTypeList = ({ category, onProductClick, onProductTypesLoaded }) => 
   return (
     <Container maxWidth="xl" sx={{ py: 0 }}>
       {/* Sub-header */}
-      <Box sx={{ mb: 4 }}>
+      <Box sx={{ mb: 4, textAlign: 'center' }}>
         <Typography 
           variant="h5" 
           component="h2" 

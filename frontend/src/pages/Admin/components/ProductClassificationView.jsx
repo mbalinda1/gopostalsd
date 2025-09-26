@@ -494,7 +494,10 @@ const ProductClassificationView = ({ category, onBack, onCategoryUpdate }) => {
             sx={{ 
               mb: 2,
               fontWeight: 700,
-              color: "text.primary",
+              background: 'linear-gradient(45deg,rgb(0, 0, 0),rgb(7, 59, 102))',
+              backgroundClip: 'text',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
               display: "flex",
               alignItems: "center",
               gap: 2
@@ -594,7 +597,10 @@ const ProductClassificationView = ({ category, onBack, onCategoryUpdate }) => {
             variant="h5" 
             sx={{ 
               fontWeight: 600,
-              color: "text.primary",
+              background: 'linear-gradient(45deg,rgb(0, 0, 0),rgb(7, 59, 102))',
+              backgroundClip: 'text',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
               display: "flex",
               alignItems: "center",
               gap: 2
@@ -1067,7 +1073,10 @@ const ProductClassificationView = ({ category, onBack, onCategoryUpdate }) => {
           sx={{ 
             mb: 3,
             fontWeight: 600,
-            color: "text.primary",
+            background: 'linear-gradient(45deg,rgb(0, 0, 0),rgb(7, 59, 102))',
+            backgroundClip: 'text',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
             display: "flex",
             alignItems: "center",
             gap: 2

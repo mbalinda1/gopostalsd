@@ -117,13 +117,13 @@ const ProductTypeCard = ({ productType, onProductClick }) => {
         {!loading && !error && products.length > 0 && (
           <Chip
             label={`${products.length} products`}
-            color="primary"
+            color="success"
             size="small"
             sx={{
               position: 'absolute',
               top: 16,
               right: 16,
-              backgroundColor: 'rgba(25, 118, 210, 0.9)',
+              backgroundColor: 'rgba(76, 175, 80, 0.9)',
               color: 'white',
               fontWeight: 600
             }}
@@ -272,7 +272,7 @@ const ProductTypeCard = ({ productType, onProductClick }) => {
                               backgroundColor: 'primary.main',
                               border: '1px solid primary.dark',
                               transform: 'translateX(4px)',
-                              boxShadow: '0 4px 12px rgba(25, 118, 210, 0.3)',
+                              boxShadow: '0 4px 12px rgba(7, 59, 102, 0.3)',
                               '& .MuiListItemText-primary': {
                                 color: 'white',
                                 fontWeight: 600
