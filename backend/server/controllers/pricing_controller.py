@@ -148,6 +148,10 @@ class PricingController:
         result = Result()
         
         try:
+            logger.info(f"PricingController.get_shipping_estimates called with:")
+            logger.info(f"items: {items}")
+            logger.info(f"shipping_info: {shipping_info}")
+            
             # Get pricing service from app context
             from flask import current_app
             pricing_service = current_app.extensions.get('pricing_service')
@@ -158,6 +162,8 @@ class PricingController:
                 return result
             
             estimates = pricing_service.get_shipping_estimates(items, shipping_info)
+            
+            logger.info(f"PricingController received estimates: {estimates}")
             
             result.data = {
                 'shipping_options': estimates,

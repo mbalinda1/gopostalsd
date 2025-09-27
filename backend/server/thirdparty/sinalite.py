@@ -181,10 +181,21 @@ class SinaliteAdapter:
             "shippingInfo": shipping_info
         }
         
+        # Debug logging
+        logger.info(f"Sending shipping estimate request to Sinalite API:")
+        logger.info(f"Items: {items}")
+        logger.info(f"Shipping Info: {shipping_info}")
+        logger.info(f"Full payload: {payload}")
+        
         response = make_http_request(self, "POST", endpoint, data=payload, requires_auth=True)
         
         if response and "body" in response:
+            logger.info(f"Shipping estimate response: {response}")
             return response["body"]
+        elif response and isinstance(response, list):
+            # Handle case where response is directly an array
+            logger.info(f"Shipping estimate response (direct array): {response}")
+            return response
         
         logger.error(f"{self.name} failed to retrieve shipping estimates")
         return []

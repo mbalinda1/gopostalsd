@@ -208,6 +208,10 @@ class PricingService:
             List of available shipping options
         """
         try:
+            logger.info(f"PricingService.get_shipping_estimates called with:")
+            logger.info(f"cart_items: {cart_items}")
+            logger.info(f"shipping_info: {shipping_info}")
+            
             # Prepare items for API call - handle both old and new formats
             api_items = []
             for item in cart_items:
@@ -223,13 +227,24 @@ class PricingService:
                         'options': item['selected_options']
                     })
             
+            logger.info(f"Prepared api_items: {api_items}")
+            
             # Get shipping estimates from API
             estimates = self.sinalite.get_shipping_estimate(api_items, shipping_info)
             
-            # Format response
+            logger.info(f"Raw estimates from Sinalite: {estimates}")
+            
+            # Check if we got valid estimates
+            if not estimates or len(estimates) == 0:
+                logger.error("No shipping estimates received from Sinalite API")
+                logger.error("This indicates an API issue that should be investigated")
+                return self._get_fallback_shipping_options()
+            
+            # Format response according to Sinalite API documentation
+            # Response format: [["UPS", "UPS Standard", 9.1, 1], ...]
             shipping_options = []
             for estimate in estimates:
-                if len(estimate) >= 4:
+                if isinstance(estimate, list) and len(estimate) >= 4:
                     shipping_options.append({
                         'carrier_name': estimate[0],
                         'method_name': estimate[1],
@@ -237,11 +252,28 @@ class PricingService:
                         'shipping_days': int(estimate[3])
                     })
             
+            # If no valid estimates were parsed, log error
+            if not shipping_options:
+                logger.error("No valid shipping estimates parsed from Sinalite API response")
+                logger.error("This indicates a data format issue that should be investigated")
+                return self._get_fallback_shipping_options()
+            
+            logger.info(f"Formatted shipping_options: {shipping_options}")
             return shipping_options
             
         except Exception as e:
-            logger.error(f"Error getting shipping estimates: {str(e)}")
-            return []
+            logger.error(f"Unexpected error getting shipping estimates: {str(e)}")
+            logger.error("This should be investigated for production stability")
+            return self._get_fallback_shipping_options()
+    
+    def _get_fallback_shipping_options(self) -> List[Dict]:
+        """
+        Return empty list when Sinalite API is unavailable.
+        We don't want to show estimated costs in production as they could be misleading.
+        """
+        logger.error("Sinalite API unavailable - shipping estimates not available")
+        logger.error("This should be investigated and resolved for production use")
+        return []
     
     
     def _group_options_by_category(self, options: List[Dict]) -> List[Dict]:
