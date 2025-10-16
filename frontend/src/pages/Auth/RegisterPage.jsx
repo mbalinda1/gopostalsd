@@ -99,7 +99,8 @@ const RegisterPage = () => {
         const { name, value } = e.target
         
         if (name.startsWith('shipping_') || name.startsWith('billing_')) {
-            const [addressType, field] = name.split('_', 2)
+            const addressType = name.startsWith('shipping_') ? 'shipping' : 'billing'
+            const field = name.substring(addressType.length + 1) // Remove 'shipping_' or 'billing_' prefix
             setFormData(prev => ({
                 ...prev,
                 [`${addressType}_address`]: {

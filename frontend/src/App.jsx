@@ -10,6 +10,8 @@ import theme from './theme';
 // Import pages
 import AdminPage from './pages/Admin/AdminPage';
 import ShopPage from './pages/Shop/ShopPage';
+import AboutPage from './pages/About/AboutPage';
+import ContactPage from './pages/Contact/ContactPage';
 
 // Import authentication pages
 import LoginPage from './pages/Auth/LoginPage';
@@ -28,6 +30,8 @@ const App = () => {
           <Routes>
             {/* Public routes with layout */}
             <Route path="/" element={<Layout><ShopPage /></Layout>} />
+            <Route path="/about" element={<Layout><AboutPage /></Layout>} />
+            <Route path="/contact" element={<Layout><ContactPage /></Layout>} />
             <Route path="/login" element={<Layout showFooter={false}><LoginPage /></Layout>} />
             <Route path="/register" element={<Layout showFooter={false}><RegisterPage /></Layout>} />
             <Route path="/verify-email" element={<Layout showFooter={false}><EmailVerificationPage /></Layout>} />

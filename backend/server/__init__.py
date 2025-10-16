@@ -64,6 +64,7 @@ def create_server(config="development"):
     pricing_service = main_factory.get_pricing_service(sinalite_adapter)
     cart_service = main_factory.get_cart_service(pricing_service)
     email_service = main_factory.get_email_service()
+    email_service.init_app(server)  # Initialize email service with Flask app
     password_service = main_factory.get_password_service()
     role_service = main_factory.get_role_service()
     auth_service = main_factory.get_auth_service()

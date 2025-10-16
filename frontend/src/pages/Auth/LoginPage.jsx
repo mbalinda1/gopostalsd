@@ -129,7 +129,7 @@ const LoginPage = () => {
                         />
                     </Box>
                     <Typography variant="h4" component="h1" gutterBottom color="primary">
-                        Welcome Back
+                        Welcome
                     </Typography>
                     <Typography variant="body1" color="text.secondary">
                         Sign in to your Go Postal SD account

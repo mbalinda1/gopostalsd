@@ -1,148 +1,152 @@
-"""
-Email Service for Go Postal SD Application
-
-This module handles email sending for authentication, notifications, and other purposes.
-"""
-
-import smtplib
-import logging
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-from typing import Dict, Any, Optional
-from server.config import DevelopmentConfig, TestingConfig, ProductionConfig
 import os
+import logging
+from typing import Dict, Any
+from flask import Flask
+from server.thirdparty.mailersend import MailerSend
 
 logger = logging.getLogger(__name__)
 
-
 class EmailService:
-    """
-    Service for sending emails.
-    """
-
+    """MailerSend email service implementation."""
+    
     def __init__(self):
-        self.smtp_server = os.getenv('SMTP_SERVER', 'smtp.gmail.com')
-        self.smtp_port = int(os.getenv('SMTP_PORT', '587'))
-        self.smtp_username = os.getenv('SMTP_USERNAME')
-        self.smtp_password = os.getenv('SMTP_PASSWORD')
-        self.from_email = os.getenv('FROM_EMAIL', 'noreply@gopostalsd.com')
-        self.from_name = os.getenv('FROM_NAME', 'Go Postal SD')
+        self.client = None
         self.base_url = os.getenv('FRONTEND_URL', 'http://localhost:3000')
-
-    def send_verification_email(self, email: str, first_name: str, token: str) -> Dict[str, Any]:
-        """
-        Send email verification email.
-        
-        Args:
-            email: Recipient email
-            first_name: Recipient first name
-            token: Verification token
-            
-        Returns:
-            Dict containing send result
-        """
+    
+    def init_app(self, app: Flask):
+        """Initialize MailerSend with Flask app."""
         try:
-            verification_url = f"{self.base_url}/verify-email?token={token}"
-            
-            subject = "Verify Your Email Address - Go Postal SD"
-            
-            html_content = f"""
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <meta charset="utf-8">
-                <title>Email Verification</title>
-                <style>
-                    body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
-                    .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
-                    .header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }}
-                    .content {{ background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }}
-                    .button {{ display: inline-block; background: #667eea; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; margin: 20px 0; }}
-                    .footer {{ text-align: center; margin-top: 30px; color: #666; font-size: 14px; }}
-                </style>
-            </head>
-            <body>
-                <div class="container">
-                    <div class="header">
-                        <h1>Welcome to Go Postal SD!</h1>
-                    </div>
-                    <div class="content">
-                        <h2>Hi {first_name},</h2>
-                        <p>Thank you for registering with Go Postal SD. To complete your registration and start using our services, please verify your email address by clicking the button below:</p>
-                        
-                        <div style="text-align: center;">
-                            <a href="{verification_url}" class="button">Verify Email Address</a>
-                        </div>
-                        
-                        <p>If the button doesn't work, you can also copy and paste this link into your browser:</p>
-                        <p style="word-break: break-all; background: #eee; padding: 10px; border-radius: 5px;">{verification_url}</p>
-                        
-                        <p><strong>This link will expire in 24 hours.</strong></p>
-                        
-                        <p>If you didn't create an account with us, please ignore this email.</p>
-                        
-                        <p>Best regards,<br>The Go Postal SD Team</p>
-                    </div>
-                    <div class="footer">
-                        <p>© 2024 Go Postal SD. All rights reserved.</p>
-                    </div>
-                </div>
-            </body>
-            </html>
-            """
-            
-            text_content = f"""
-            Hi {first_name},
-            
-            Thank you for registering with Go Postal SD. To complete your registration and start using our services, please verify your email address by visiting the following link:
-            
-            {verification_url}
-            
-            This link will expire in 24 hours.
-            
-            If you didn't create an account with us, please ignore this email.
-            
-            Best regards,
-            The Go Postal SD Team
-            """
-            
-            return self._send_email(email, subject, text_content, html_content)
-            
+            self.client = MailerSend()
+            if self.client.is_configured:
+                logger.info("Email service initialized successfully")
+            else:
+                logger.warning("Email service initialized but not configured")
         except Exception as e:
-            logger.error(f"Error sending verification email: {str(e)}")
-            return {'success': False, 'error': str(e)}
-
-    def send_password_reset_email(self, email: str, first_name: str, token: str) -> Dict[str, Any]:
+            logger.error(f"Failed to initialize MailerSend: {str(e)}")
+            self.client = None
+    
+    def send_email(self, to_email: str, subject: str, text_content: str, html_content: str = None) -> Dict[str, Any]:
         """
-        Send password reset email.
+        Send email using MailerSend.
         
         Args:
-            email: Recipient email
-            first_name: Recipient first name
-            token: Reset token
-            
+            to_email: Recipient email address
+            subject: Email subject
+            text_content: Plain text content
+            html_content: HTML content (optional)
+        
         Returns:
             Dict containing send result
         """
-        try:
-            reset_url = f"{self.base_url}/reset-password?token={token}"
-            
-            subject = "Reset Your Password - Go Postal SD"
-            
-            html_content = f"""
+        if not self.client:
+            return {
+                'success': False, 
+                'error': 'Email service not configured. Set EMAIL_API_KEY environment variable.'
+            }
+        
+        return self.client.send_email(to_email, subject, text_content, html_content)
+    
+    @property
+    def is_configured(self) -> bool:
+        """Check if MailerSend is properly configured."""
+        return self.client and self.client.is_configured
+    
+    def send_verification_email(self, email: str, first_name: str, token: str) -> Dict[str, Any]:
+        """Send email verification email."""
+        subject = "Verify Your Email - Go Postal SD"
+        
+        verification_url = f"{self.base_url}/verify-email?token={token}"
+        
+        text_content = f"""
+                Hello {first_name},
+
+                Welcome to Go Postal SD! Please verify your email address to complete your registration.
+
+                Click the link below to verify your email:
+                {verification_url}
+
+                If you didn't create an account with us, please ignore this email.
+
+                Best regards,
+                Go Postal SD Team
+                        """.strip()
+                        
+                        html_content = f"""
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="utf-8">
+                    <title>Verify Your Email</title>
+                    <style>
+                        body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+                        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+                        .header {{ background-color: #1976d2; color: white; padding: 20px; text-align: center; }}
+                        .content {{ padding: 20px; background-color: #f9f9f9; }}
+                        .button {{ display: inline-block; background-color: #1976d2; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; margin: 20px 0; }}
+                        .footer {{ text-align: center; padding: 20px; color: #666; font-size: 14px; }}
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <div class="header">
+                            <h1>Welcome to Go Postal SD!</h1>
+                        </div>
+                        <div class="content">
+                            <p>Hello {first_name},</p>
+                            <p>Thank you for registering with Go Postal SD! To complete your registration, please verify your email address.</p>
+                            <p style="text-align: center;">
+                                <a href="{verification_url}" class="button">Verify Email Address</a>
+                            </p>
+                            <p>If the button doesn't work, you can also copy and paste this link into your browser:</p>
+                            <p style="word-break: break-all; color: #1976d2;">{verification_url}</p>
+                            <p>If you didn't create an account with us, please ignore this email.</p>
+                        </div>
+                        <div class="footer">
+                            <p>Best regards,<br>Go Postal SD Team</p>
+                        </div>
+                    </div>
+                </body>
+                </html>
+                """.strip()
+        
+        return self.send_email(email, subject, text_content, html_content)
+    
+    def send_password_reset_email(self, email: str, first_name: str, token: str) -> Dict[str, Any]:
+        """Send password reset email."""
+        subject = "Reset Your Password - Go Postal SD"
+        
+        reset_url = f"{self.base_url}/reset-password?token={token}"
+        
+        text_content = f"""
+            Hello {first_name},
+
+            You requested to reset your password for your Go Postal SD account.
+
+            Click the link below to reset your password:
+            {reset_url}
+
+            This link will expire in 1 hour for security reasons.
+
+            If you didn't request a password reset, please ignore this email.
+
+            Best regards,
+            Go Postal SD Team
+                    """.strip()
+                    
+                    html_content = f"""
             <!DOCTYPE html>
             <html>
             <head>
                 <meta charset="utf-8">
-                <title>Password Reset</title>
+                <title>Reset Your Password</title>
                 <style>
                     body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
                     .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
-                    .header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }}
-                    .content {{ background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }}
-                    .button {{ display: inline-block; background: #667eea; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; margin: 20px 0; }}
-                    .footer {{ text-align: center; margin-top: 30px; color: #666; font-size: 14px; }}
-                    .warning {{ background: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; border-radius: 5px; margin: 20px 0; }}
+                    .header {{ background-color: #8B0000; color: white; padding: 20px; text-align: center; }}
+                    .content {{ padding: 20px; background-color: #f9f9f9; }}
+                    .button {{ display: inline-block; background-color: #8B0000; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; margin: 20px 0; }}
+                    .footer {{ text-align: center; padding: 20px; color: #666; font-size: 14px; }}
+                    .warning {{ background-color: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; border-radius: 4px; margin: 20px 0; }}
                 </style>
             </head>
             <body>
@@ -151,195 +155,178 @@ class EmailService:
                         <h1>Password Reset Request</h1>
                     </div>
                     <div class="content">
-                        <h2>Hi {first_name},</h2>
-                        <p>We received a request to reset your password for your Go Postal SD account. If you made this request, click the button below to reset your password:</p>
-                        
-                        <div style="text-align: center;">
+                        <p>Hello {first_name},</p>
+                        <p>You requested to reset your password for your Go Postal SD account.</p>
+                        <p style="text-align: center;">
                             <a href="{reset_url}" class="button">Reset Password</a>
-                        </div>
-                        
-                        <p>If the button doesn't work, you can also copy and paste this link into your browser:</p>
-                        <p style="word-break: break-all; background: #eee; padding: 10px; border-radius: 5px;">{reset_url}</p>
-                        
+                        </p>
                         <div class="warning">
-                            <p><strong>Important:</strong></p>
-                            <ul>
-                                <li>This link will expire in 1 hour</li>
-                                <li>If you didn't request this password reset, please ignore this email</li>
-                                <li>Your password will not be changed until you click the link above</li>
-                            </ul>
+                            <strong>Security Notice:</strong> This link will expire in 1 hour for security reasons.
                         </div>
-                        
-                        <p>For security reasons, if you didn't request this password reset, please contact our support team immediately.</p>
-                        
-                        <p>Best regards,<br>The Go Postal SD Team</p>
+                        <p>If the button doesn't work, you can also copy and paste this link into your browser:</p>
+                        <p style="word-break: break-all; color: #8B0000;">{reset_url}</p>
+                        <p>If you didn't request a password reset, please ignore this email.</p>
                     </div>
                     <div class="footer">
-                        <p>© 2024 Go Postal SD. All rights reserved.</p>
+                        <p>Best regards,<br>Go Postal SD Team</p>
                     </div>
                 </div>
             </body>
             </html>
-            """
-            
-            text_content = f"""
-            Hi {first_name},
-            
-            We received a request to reset your password for your Go Postal SD account. If you made this request, visit the following link to reset your password:
-            
-            {reset_url}
-            
-            This link will expire in 1 hour.
-            
-            If you didn't request this password reset, please ignore this email. Your password will not be changed until you click the link above.
-            
-            For security reasons, if you didn't request this password reset, please contact our support team immediately.
-            
-            Best regards,
-            The Go Postal SD Team
-            """
-            
-            return self._send_email(email, subject, text_content, html_content)
-            
-        except Exception as e:
-            logger.error(f"Error sending password reset email: {str(e)}")
-            return {'success': False, 'error': str(e)}
-
-    def send_welcome_email(self, email: str, first_name: str) -> Dict[str, Any]:
-        """
-        Send welcome email after successful verification.
+                """.strip()
         
-        Args:
-            email: Recipient email
-            first_name: Recipient first name
-            
-        Returns:
-            Dict containing send result
-        """
-        try:
-            subject = "Welcome to Go Postal SD!"
-            
-            html_content = f"""
+        return self.send_email(email, subject, text_content, html_content)
+    
+    def send_contact_email(self, name: str, email: str, phone: str, subject: str, message: str) -> bool:
+        """Send contact form email to Go Postal."""
+        email_subject = f"Contact Form: {subject}"
+        
+        text_content = f"""
+            New contact form submission from Go Postal SD website:
+
+            Name: {name}
+            Email: {email}
+            Phone: {phone or 'Not provided'}
+            Subject: {subject}
+
+            Message:
+            {message}
+
+            ---
+            This message was sent from the Go Postal SD contact form.
+                    """.strip()
+                    
+                    html_content = f"""
             <!DOCTYPE html>
             <html>
             <head>
                 <meta charset="utf-8">
-                <title>Welcome to Go Postal SD</title>
+                <title>Contact Form Submission</title>
                 <style>
                     body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
                     .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
-                    .header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }}
-                    .content {{ background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }}
-                    .button {{ display: inline-block; background: #667eea; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; margin: 20px 0; }}
-                    .footer {{ text-align: center; margin-top: 30px; color: #666; font-size: 14px; }}
+                    .header {{ background-color: #1976d2; color: white; padding: 20px; text-align: center; }}
+                    .content {{ padding: 20px; background-color: #f9f9f9; }}
+                    .field {{ margin-bottom: 15px; }}
+                    .label {{ font-weight: bold; color: #1976d2; }}
+                    .message {{ background-color: white; padding: 15px; border-left: 4px solid #1976d2; margin: 15px 0; }}
+                    .footer {{ text-align: center; padding: 20px; color: #666; font-size: 14px; }}
                 </style>
             </head>
             <body>
                 <div class="container">
                     <div class="header">
-                        <h1>Welcome to Go Postal SD!</h1>
+                        <h1>New Contact Form Submission</h1>
                     </div>
                     <div class="content">
-                        <h2>Hi {first_name},</h2>
-                        <p>Congratulations! Your email has been verified and your account is now active. You can now start using all the features of Go Postal SD.</p>
-                        
-                        <h3>What you can do now:</h3>
-                        <ul>
-                            <li>Browse our product catalog</li>
-                            <li>Get instant pricing for your projects</li>
-                            <li>Place orders with confidence</li>
-                            <li>Track your orders in real-time</li>
-                            <li>Manage your account settings</li>
-                        </ul>
-                        
-                        <div style="text-align: center;">
-                            <a href="{self.base_url}/shop" class="button">Start Shopping</a>
+                        <div class="field">
+                            <span class="label">Name:</span> {name}
                         </div>
-                        
-                        <p>If you have any questions or need assistance, don't hesitate to contact our support team.</p>
-                        
-                        <p>Thank you for choosing Go Postal SD!</p>
-                        
-                        <p>Best regards,<br>The Go Postal SD Team</p>
+                        <div class="field">
+                            <span class="label">Email:</span> {email}
+                        </div>
+                        <div class="field">
+                            <span class="label">Phone:</span> {phone or 'Not provided'}
+                        </div>
+                        <div class="field">
+                            <span class="label">Subject:</span> {subject}
+                        </div>
+                        <div class="field">
+                            <span class="label">Message:</span>
+                            <div class="message">{message}</div>
+                        </div>
                     </div>
                     <div class="footer">
-                        <p>© 2024 Go Postal SD. All rights reserved.</p>
+                        <p>This message was sent from the Go Postal SD contact form.</p>
                     </div>
                 </div>
             </body>
             </html>
-            """
-            
-            text_content = f"""
-            Hi {first_name},
-            
-            Congratulations! Your email has been verified and your account is now active. You can now start using all the features of Go Postal SD.
-            
-            What you can do now:
-            - Browse our product catalog
-            - Get instant pricing for your projects
-            - Place orders with confidence
-            - Track your orders in real-time
-            - Manage your account settings
-            
-            Visit {self.base_url}/shop to start shopping!
-            
-            If you have any questions or need assistance, don't hesitate to contact our support team.
-            
-            Thank you for choosing Go Postal SD!
-            
-            Best regards,
-            The Go Postal SD Team
-            """
-            
-            return self._send_email(email, subject, text_content, html_content)
-            
-        except Exception as e:
-            logger.error(f"Error sending welcome email: {str(e)}")
-            return {'success': False, 'error': str(e)}
-
-    def _send_email(self, to_email: str, subject: str, text_content: str, html_content: str = None) -> Dict[str, Any]:
-        """
-        Send email using SMTP.
+            """.strip()
         
-        Args:
-            to_email: Recipient email
-            subject: Email subject
-            text_content: Plain text content
-            html_content: HTML content (optional)
-            
-        Returns:
-            Dict containing send result
-        """
-        try:
-            if not self.smtp_username or not self.smtp_password:
-                logger.warning("SMTP credentials not configured, skipping email send")
-                return {'success': True, 'message': 'Email service not configured'}
+        result = self.send_email(
+            to_email=self.from_email,  # Send to Go Postal email
+            subject=email_subject,
+            text_content=text_content,
+            html_content=html_content
+        )
+        
+        if result.get('success'):
+            # Send confirmation to customer
+            self._send_contact_confirmation(name, email, subject)
+            return True
+        else:
+            logger.error(f"Failed to send contact email: {result.get('error')}")
+            return False
+    
+    def _send_contact_confirmation(self, name: str, email: str, subject: str):
+        """Send confirmation email to customer."""
+        confirmation_subject = "Message Received - Go Postal SD"
+        
+        text_content = f"""
+            Hello {name},
 
-            # Create message
-            msg = MIMEMultipart('alternative')
-            msg['From'] = f"{self.from_name} <{self.from_email}>"
-            msg['To'] = to_email
-            msg['Subject'] = subject
+            Thank you for contacting Go Postal SD! We have received your message regarding "{subject}".
 
-            # Add text content
-            text_part = MIMEText(text_content, 'plain')
-            msg.attach(text_part)
+            Our team will review your message and get back to you as soon as possible.
 
-            # Add HTML content if provided
-            if html_content:
-                html_part = MIMEText(html_content, 'html')
-                msg.attach(html_part)
+            If you have any urgent questions, please call us at (619) 237-0374.
 
-            # Send email
-            with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
-                server.starttls()
-                server.login(self.smtp_username, self.smtp_password)
-                server.send_message(msg)
+            Best regards,
+            Go Postal SD Team
 
-            logger.info(f"Email sent successfully to {to_email}")
-            return {'success': True, 'message': 'Email sent successfully'}
-
-        except Exception as e:
-            logger.error(f"Error sending email to {to_email}: {str(e)}")
-            return {'success': False, 'error': str(e)}
+            Go Postal
+            1501 India St Suite 103
+            San Diego, CA 92101
+            Phone: (619) 237-0374
+            Email: gopostalsd@gmail.com
+                    """.strip()
+                    
+                    html_content = f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="utf-8">
+                <title>Message Received</title>
+                <style>
+                    body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+                    .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+                    .header {{ background-color: #1976d2; color: white; padding: 20px; text-align: center; }}
+                    .content {{ padding: 20px; background-color: #f9f9f9; }}
+                    .footer {{ text-align: center; padding: 20px; color: #666; font-size: 14px; }}
+                    .contact-info {{ background-color: white; padding: 15px; border-radius: 4px; margin: 15px 0; }}
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <div class="header">
+                        <h1>Message Received!</h1>
+                    </div>
+                    <div class="content">
+                        <p>Hello {name},</p>
+                        <p>Thank you for contacting Go Postal SD! We have received your message regarding <strong>"{subject}"</strong>.</p>
+                        <p>Our team will review your message and get back to you as soon as possible.</p>
+                        <p>If you have any urgent questions, please call us at <strong>(619) 237-0374</strong>.</p>
+                        
+                        <div class="contact-info">
+                            <h3>Go Postal SD</h3>
+                            <p>1501 India St Suite 103<br>
+                            San Diego, CA 92101<br>
+                            Phone: (619) 237-0374<br>
+                            Email: gopostalsd@gmail.com</p>
+                        </div>
+                    </div>
+                    <div class="footer">
+                        <p>Best regards,<br>Go Postal SD Team</p>
+                    </div>
+                </div>
+            </body>
+            </html>
+            """.strip()
+        
+        self.send_email(
+            to_email=email,
+            subject=confirmation_subject,
+            text_content=text_content,
+            html_content=html_content
+        )

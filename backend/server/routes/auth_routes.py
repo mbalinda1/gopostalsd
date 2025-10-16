@@ -148,6 +148,7 @@ class EmailVerificationResource(Resource):
         else:
             return {'error': result.error, 'code': result.details}, 400
 
+
 @api.route('/login')
 class LoginResource(Resource):
     """Resource for user login."""
