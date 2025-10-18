@@ -56,7 +56,7 @@ class EmailService:
             logger.error(f"Failed to initialize {self.provider} email service: {str(e)}")
             self.client = None
     
-    def send_email(self, to_email: str, subject: str, text_content: str, html_content: str = None) -> Dict[str, Any]:
+    def send_email(self, to_email: str, subject: str, text_content: str, html_content: str = None, reply_to: str = None) -> Dict[str, Any]:
         """
         Send email using the configured provider.
         
@@ -65,6 +65,7 @@ class EmailService:
             subject: Email subject
             text_content: Plain text content
             html_content: HTML content (optional)
+            reply_to: Reply-to email address (optional, defaults to FROM_EMAIL)
         
         Returns:
             Dict containing send result
@@ -75,7 +76,7 @@ class EmailService:
                 'error': 'Email service not configured. Set EMAIL_API_KEY environment variable.'
             }
         
-        return self.client.send_email(to_email, subject, text_content, html_content)
+        return self.client.send_email(to_email, subject, text_content, html_content, reply_to)
     
     @property
     def is_configured(self) -> bool:
@@ -104,7 +105,7 @@ class EmailService:
         
         return info
     
-    def send_verification_email(self, email: str, first_name: str, token: str) -> Dict[str, Any]:
+    def send_verification_email(self, email: str, first_name: str, token: str, reply_to: str = None) -> Dict[str, Any]:
         """Send email verification email."""
         subject = "Verify Your Email - Go Postal SD"
         
@@ -124,7 +125,7 @@ class EmailService:
                 Go Postal SD Team
                         """.strip()
                         
-                        html_content = f"""
+        html_content = f"""
                 <!DOCTYPE html>
                 <html>
                 <head>
@@ -162,9 +163,9 @@ class EmailService:
                 </html>
                 """.strip()
         
-        return self.send_email(email, subject, text_content, html_content)
+        return self.send_email(email, subject, text_content, html_content, reply_to)
     
-    def send_password_reset_email(self, email: str, first_name: str, token: str) -> Dict[str, Any]:
+    def send_password_reset_email(self, email: str, first_name: str, token: str, reply_to: str = None) -> Dict[str, Any]:
         """Send password reset email."""
         subject = "Reset Your Password - Go Postal SD"
         
@@ -186,7 +187,7 @@ class EmailService:
             Go Postal SD Team
                     """.strip()
                     
-                    html_content = f"""
+        html_content = f"""
             <!DOCTYPE html>
             <html>
             <head>
@@ -228,9 +229,9 @@ class EmailService:
             </html>
                 """.strip()
         
-        return self.send_email(email, subject, text_content, html_content)
+        return self.send_email(email, subject, text_content, html_content, reply_to)
     
-    def send_contact_email(self, name: str, email: str, phone: str, subject: str, message: str) -> bool:
+    def send_contact_email(self, name: str, email: str, phone: str, subject: str, message: str, reply_to: str = None) -> bool:
         """Send contact form email to Go Postal."""
         email_subject = f"Contact Form: {subject}"
         
@@ -249,7 +250,7 @@ class EmailService:
             This message was sent from the Go Postal SD contact form.
                     """.strip()
                     
-                    html_content = f"""
+        html_content = f"""
             <!DOCTYPE html>
             <html>
             <head>
@@ -298,21 +299,22 @@ class EmailService:
             """.strip()
         
         result = self.send_email(
-            to_email=self.from_email,  # Send to Go Postal email
+            to_email=self.client.get_from_email(),  # Send to Go Postal email
             subject=email_subject,
             text_content=text_content,
-            html_content=html_content
+            html_content=html_content,
+            reply_to=reply_to or email  # Use provided reply_to or customer's email
         )
         
         if result.get('success'):
             # Send confirmation to customer
-            self._send_contact_confirmation(name, email, subject)
+            self._send_contact_confirmation(name, email, subject, reply_to)
             return True
         else:
             logger.error(f"Failed to send contact email: {result.get('error')}")
             return False
     
-    def _send_contact_confirmation(self, name: str, email: str, subject: str):
+    def _send_contact_confirmation(self, name: str, email: str, subject: str, reply_to: str = None):
         """Send confirmation email to customer."""
         confirmation_subject = "Message Received - Go Postal SD"
         
@@ -335,7 +337,7 @@ class EmailService:
             Email: gopostalsd@gmail.com
                     """.strip()
                     
-                    html_content = f"""
+        html_content = f"""
             <!DOCTYPE html>
             <html>
             <head>
@@ -381,5 +383,6 @@ class EmailService:
             to_email=email,
             subject=confirmation_subject,
             text_content=text_content,
-            html_content=html_content
+            html_content=html_content,
+            reply_to=reply_to
         )

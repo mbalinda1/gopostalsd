@@ -48,7 +48,8 @@ result = mailer_adapter.send_email(
     to_email="user@example.com",
     subject="Welcome to Go Postal SD",
     text_content="Welcome! Thank you for joining us.",
-    html_content="<h1>Welcome!</h1><p>Thank you for joining us.</p>"
+    html_content="<h1>Welcome!</h1><p>Thank you for joining us.</p>",
+    reply_to="support@gopostalsd.com"  # Optional reply-to address
 )
 
 if result['success']:
@@ -56,6 +57,8 @@ if result['success']:
 else:
     print(f"Email failed: {result['error']}")
 ```
+
+**Note**: The MailerSendAdapter uses the official MailerSend Python SDK with `MailerSendClient` and `Email` classes for reliable email delivery.
 
 ### 2. Configuration Status
 
@@ -99,6 +102,33 @@ All email sending methods return a standardized response:
     'status_code': 401,
     'recipient': 'user@example.com'
 }
+```
+
+## Technical Implementation
+
+The MailerSendAdapter uses the official MailerSend Python SDK:
+
+```python
+from mailersend import MailerSendClient, Email
+
+# Client initialization
+self.client = MailerSendClient(api_key=self.api_key)
+
+# Email creation and sending
+email = Email()
+email.set_from(self.from_email, self.from_name)
+email.set_to(to_email)
+email.set_subject(subject)
+email.set_text(text_content)
+if html_content:
+    email.set_html(html_content)
+
+# Add reply-to (defaults to from_email if not provided)
+reply_to_email = reply_to or self.from_email
+email.set_reply_to(reply_to_email)
+
+# Send email
+response = self.client.send(email)
 ```
 
 ## Integration with EmailService
@@ -237,12 +267,19 @@ class TestMailerSendAdapter(unittest.TestCase):
     def setUp(self):
         self.adapter = MailerSendAdapter(api_key="test_key")
     
-    @patch('server.thirdparty.mailersend.MailerSendSDK')
-    def test_send_email_success(self, mock_sdk):
+    @patch('server.thirdparty.mailersend.MailerSendClient')
+    @patch('server.thirdparty.mailersend.Email')
+    def test_send_email_success(self, mock_email_class, mock_client_class):
         # Mock successful response
         mock_response = MagicMock()
         mock_response.status_code = 202
-        mock_sdk.return_value.send.return_value = mock_response
+        
+        # Mock client and email instances
+        mock_client = MagicMock()
+        mock_email = MagicMock()
+        mock_client_class.return_value = mock_client
+        mock_email_class.return_value = mock_email
+        mock_client.send.return_value = mock_response
         
         result = self.adapter.send_email(
             to_email="test@example.com",

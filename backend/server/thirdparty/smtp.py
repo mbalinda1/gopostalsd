@@ -46,7 +46,7 @@ class SMTPAdapter:
         else:
             logger.info(f"SMTP client configured for {self.smtp_server}:{self.smtp_port}")
     
-    def send_email(self, to_email: str, subject: str, text_content: str, html_content: str = None) -> Dict[str, Any]:
+    def send_email(self, to_email: str, subject: str, text_content: str, html_content: str = None, reply_to: str = None) -> Dict[str, Any]:
         """
         Send email using SMTP.
         
@@ -55,6 +55,7 @@ class SMTPAdapter:
             subject: Email subject
             text_content: Plain text content
             html_content: HTML content (optional)
+            reply_to: Reply-to email address (optional, defaults to from_email)
         
         Returns:
             Dict containing send result with success status and details
@@ -72,6 +73,10 @@ class SMTPAdapter:
             msg['Subject'] = subject
             msg['From'] = f"{self.from_name} <{self.from_email}>"
             msg['To'] = to_email
+            
+            # Add reply-to (defaults to from_email if not provided)
+            reply_to_email = reply_to or self.from_email
+            msg['Reply-To'] = reply_to_email
             
             # Add text content
             text_part = MIMEText(text_content, 'plain', 'utf-8')
@@ -98,7 +103,8 @@ class SMTPAdapter:
                     'success': True,
                     'message': 'Email sent successfully via SMTP',
                     'recipient': to_email,
-                    'provider': 'SMTP'
+                    'provider': 'SMTP',
+                    'reply_to': reply_to_email
                 }
                 
         except smtplib.SMTPAuthenticationError as e:

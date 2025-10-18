@@ -108,7 +108,8 @@ result = smtp_adapter.send_email(
     to_email="user@example.com",
     subject="Welcome to Go Postal SD",
     text_content="Welcome! Thank you for joining us.",
-    html_content="<h1>Welcome!</h1><p>Thank you for joining us.</p>"
+    html_content="<h1>Welcome!</h1><p>Thank you for joining us.</p>",
+    reply_to="support@gopostalsd.com"  # Optional reply-to address
 )
 
 if result['success']:
@@ -151,6 +152,34 @@ print(f"Server: {smtp_info['server']}:{smtp_info['port']}")
 print(f"TLS: {smtp_info['use_tls']}")
 print(f"From: {smtp_info['from_name']} <{smtp_info['from_email']}>")
 ```
+
+### 5. Reply-To Functionality
+
+The SMTPAdapter supports reply-to addresses for better email management:
+
+```python
+# Send email with custom reply-to
+result = smtp_adapter.send_email(
+    to_email="customer@example.com",
+    subject="Order Confirmation",
+    text_content="Your order has been confirmed.",
+    reply_to="orders@gopostalsd.com"  # Replies will go to orders department
+)
+
+# If no reply_to is provided, it defaults to the FROM_EMAIL
+result = smtp_adapter.send_email(
+    to_email="customer@example.com",
+    subject="Order Confirmation", 
+    text_content="Your order has been confirmed."
+    # reply_to defaults to FROM_EMAIL environment variable
+)
+```
+
+**Reply-To Behavior:**
+- If `reply_to` parameter is provided, it will be used
+- If `reply_to` is `None` or not provided, defaults to `FROM_EMAIL`
+- Reply-To header is automatically added to the email message
+- Recipients can reply directly to the specified address
 
 ## Response Format
 

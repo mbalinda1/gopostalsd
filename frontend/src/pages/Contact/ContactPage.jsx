@@ -91,10 +91,11 @@ const ContactPage = () => {
             )}
 
             <form onSubmit={handleSubmit}>
-              <Grid container spacing={3}>
-                <Grid item xs={12} sm={6}>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                {/* Row 1: Full Name, Email Address, Phone Number */}
+                <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
                   <TextField
-                    fullWidth
+                    sx={{ flex: '1 1 200px', minWidth: '200px' }}
                     label="Full Name"
                     name="name"
                     value={formData.name}
@@ -102,10 +103,8 @@ const ContactPage = () => {
                     required
                     variant="outlined"
                   />
-                </Grid>
-                <Grid item xs={12} sm={6}>
                   <TextField
-                    fullWidth
+                    sx={{ flex: '1 1 200px', minWidth: '200px' }}
                     label="Email Address"
                     name="email"
                     type="email"
@@ -114,43 +113,43 @@ const ContactPage = () => {
                     required
                     variant="outlined"
                   />
-                </Grid>
-                <Grid item xs={12} sm={6}>
                   <TextField
-                    fullWidth
+                    sx={{ flex: '1 1 200px', minWidth: '200px' }}
                     label="Phone Number"
                     name="phone"
                     value={formData.phone}
                     onChange={handleInputChange}
                     variant="outlined"
                   />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    label="Subject"
-                    name="subject"
-                    value={formData.subject}
-                    onChange={handleInputChange}
-                    required
-                    variant="outlined"
-                  />
-                </Grid>
-                <Grid item xs={12}>
-                  <TextField
-                    fullWidth
-                    label="Message"
-                    name="message"
-                    value={formData.message}
-                    onChange={handleInputChange}
-                    required
-                    multiline
-                    rows={6}
-                    variant="outlined"
-                    placeholder="Tell us about your printing needs, questions, or how we can help you..."
-                  />
-                </Grid>
-                <Grid item xs={12}>
+                </Box>
+                
+                {/* Row 2: Subject */}
+                <TextField
+                  fullWidth
+                  label="Subject"
+                  name="subject"
+                  value={formData.subject}
+                  onChange={handleInputChange}
+                  required
+                  variant="outlined"
+                />
+                
+                {/* Row 3: Message (Bigger height) */}
+                <TextField
+                  fullWidth
+                  label="Message"
+                  name="message"
+                  value={formData.message}
+                  onChange={handleInputChange}
+                  required
+                  multiline
+                  rows={8}
+                  variant="outlined"
+                  placeholder="Tell us about your printing needs, questions, or how we can help you..."
+                />
+                
+                {/* Send Message Button - Right aligned */}
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
                   <Button
                     type="submit"
                     variant="contained"
@@ -174,8 +173,8 @@ const ContactPage = () => {
                       'Send Message'
                     )}
                   </Button>
-                </Grid>
-              </Grid>
+                </Box>
+              </Box>
             </form>
           </Paper>
     </Container>

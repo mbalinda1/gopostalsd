@@ -1,7 +1,7 @@
 import os
 import logging
 from typing import Dict, Any, Optional
-from mailersend import MailerSend as MailerSendSDK
+from mailersend import MailerSendClient, Email
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,7 @@ class MailerSendAdapter:
         
         if self.api_key:
             try:
-                self.client = MailerSendSDK(api_key=self.api_key)
+                self.client = MailerSendClient(api_key=self.api_key)
                 logger.info("MailerSend client initialized successfully")
             except Exception as e:
                 logger.error(f"Failed to initialize MailerSend client: {str(e)}")
@@ -30,7 +30,7 @@ class MailerSendAdapter:
         else:
             logger.warning("MAILERSEND_API_KEY not found in environment variables")
     
-    def send_email(self, to_email: str, subject: str, text_content: str, html_content: str = None) -> Dict[str, Any]:
+    def send_email(self, to_email: str, subject: str, text_content: str, html_content: str = None, reply_to: str = None) -> Dict[str, Any]:
         """
         Send email using MailerSend SDK.
         
@@ -39,6 +39,7 @@ class MailerSendAdapter:
             subject: Email subject
             text_content: Plain text content
             html_content: HTML content (optional)
+            reply_to: Reply-to email address (optional, defaults to from_email)
         
         Returns:
             Dict containing send result with success status and details
@@ -47,42 +48,40 @@ class MailerSendAdapter:
             if not self.client:
                 return {
                     'success': False, 
-                    'error': 'MailerSend not configured. Set MAILERSEND_API_KEY environment variable.'
+                    'error': 'MailerSend not configured. Set MAILERSEND_API_KEY environment variable.',
+                    'recipient': to_email
                 }
             
-            # Create email data structure
-            email_data = {
-                "from": {
-                    "email": self.from_email,
-                    "name": self.from_name
-                },
-                "to": [
-                    {
-                        "email": to_email
-                    }
-                ],
-                "subject": subject,
-                "text": text_content
-            }
+            # Create email using MailerSend Email class
+            email = Email()
+            email.set_from(self.from_email, self.from_name)
+            email.set_to(to_email)
+            email.set_subject(subject)
+            email.set_text(text_content)
             
             # Add HTML content if provided
             if html_content:
-                email_data["html"] = html_content
+                email.set_html(html_content)
             
-            # Send email via MailerSend SDK
-            response = self.client.send(email_data)
+            # Add reply-to (defaults to from_email if not provided)
+            reply_to_email = reply_to or self.from_email
+            email.set_reply_to(reply_to_email)
             
-            # Check response status
+            # Send email via MailerSend client
+            response = self.client.send(email)
+            
+            # MailerSend returns a response object
             if response.status_code in [200, 201, 202]:
                 logger.info(f"Email sent successfully to {to_email}")
                 return {
                     'success': True,
                     'message': 'Email sent successfully',
                     'status_code': response.status_code,
-                    'recipient': to_email
+                    'recipient': to_email,
+                    'reply_to': reply_to_email
                 }
             else:
-                logger.error(f"MailerSend API error: {response.status_code} - {response.text}")
+                logger.error(f"MailerSend API error: {response.status_code}")
                 return {
                     'success': False,
                     'error': f'MailerSend API error: {response.status_code}',
