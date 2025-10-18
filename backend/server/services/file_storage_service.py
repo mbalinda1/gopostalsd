@@ -2,7 +2,7 @@ import os
 from abc import ABC, abstractmethod
 from flask import Flask, request
 from werkzeug.utils import secure_filename
-from server.thirdparty.supabase import SupabaseStorage
+from server.thirdparty.supabase import SupabaseAdapter
 
 class BaseFileStorage(ABC):
     @abstractmethod
@@ -46,7 +46,7 @@ class LocalFileStorage(BaseFileStorage):
     
 class RemoteFileStorage(BaseFileStorage):
     def __init__(self):
-        self.remote = SupabaseStorage()
+        self.remote = SupabaseAdapter()
 
     def init_app(self, app: Flask):
         self.remote.init_app(app)

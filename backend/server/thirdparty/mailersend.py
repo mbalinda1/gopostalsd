@@ -5,7 +5,7 @@ from mailersend import MailerSend as MailerSendSDK
 
 logger = logging.getLogger(__name__)
 
-class MailerSend:
+class MailerSendAdapter:
     """Wrapper class for MailerSend SDK that handles API key access and email sending."""
     
     def __init__(self, api_key: Optional[str] = None):

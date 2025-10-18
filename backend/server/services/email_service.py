@@ -1,33 +1,64 @@
 import os
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from flask import Flask
-from server.thirdparty.mailersend import MailerSend
+from server.thirdparty.mailersend import MailerSendAdapter
+from server.thirdparty.smtp import SMTPAdapter
 
 logger = logging.getLogger(__name__)
 
 class EmailService:
-    """MailerSend email service implementation."""
+    """Email service implementation supporting multiple providers (MailerSend, SMTP)."""
     
     def __init__(self):
         self.client = None
+        self.provider = None
         self.base_url = os.getenv('FRONTEND_URL', 'http://localhost:3000')
     
-    def init_app(self, app: Flask):
-        """Initialize MailerSend with Flask app."""
-        try:
-            self.client = MailerSend()
-            if self.client.is_configured:
-                logger.info("Email service initialized successfully")
+    def init_app(self, app: Flask, provider: Optional[str] = None):
+        """
+        Initialize email service with specified provider.
+        
+        Args:
+            app: Flask application instance
+            provider: Email provider ('mailersend', 'smtp', or None for auto-detect)
+        """
+        # Determine provider
+        if provider:
+            self.provider = provider.lower()
+        else:
+            # Auto-detect based on environment variables
+            if os.getenv('MAILERSEND_API_KEY'):
+                self.provider = 'mailersend'
+            elif os.getenv('SMTP_USERNAME') and os.getenv('SMTP_PASSWORD'):
+                self.provider = 'smtp'
             else:
-                logger.warning("Email service initialized but not configured")
+                logger.warning("No email provider configured. Set MAILERSEND_API_KEY or SMTP_USERNAME/SMTP_PASSWORD")
+                return
+        
+        try:
+            if self.provider == 'mailersend':
+                self.client = MailerSendAdapter()
+                provider_name = "MailerSend"
+            elif self.provider == 'smtp':
+                self.client = SMTPAdapter()
+                provider_name = "SMTP"
+            else:
+                logger.error(f"Unknown email provider: {self.provider}")
+                return
+            
+            if self.client.is_configured:
+                logger.info(f"Email service initialized successfully with {provider_name}")
+            else:
+                logger.warning(f"Email service initialized with {provider_name} but not configured")
+                
         except Exception as e:
-            logger.error(f"Failed to initialize MailerSend: {str(e)}")
+            logger.error(f"Failed to initialize {self.provider} email service: {str(e)}")
             self.client = None
     
     def send_email(self, to_email: str, subject: str, text_content: str, html_content: str = None) -> Dict[str, Any]:
         """
-        Send email using MailerSend.
+        Send email using the configured provider.
         
         Args:
             to_email: Recipient email address
@@ -48,8 +79,30 @@ class EmailService:
     
     @property
     def is_configured(self) -> bool:
-        """Check if MailerSend is properly configured."""
+        """Check if email service is properly configured."""
         return self.client and self.client.is_configured
+    
+    def get_provider_info(self) -> Dict[str, Any]:
+        """Get information about the current email provider."""
+        if not self.client:
+            return {
+                'provider': None,
+                'configured': False,
+                'error': 'No email provider configured'
+            }
+        
+        info = {
+            'provider': self.provider,
+            'configured': self.client.is_configured,
+            'from_email': self.client.get_from_email(),
+            'from_name': self.client.get_from_name()
+        }
+        
+        # Add provider-specific info
+        if hasattr(self.client, 'get_smtp_info'):
+            info.update(self.client.get_smtp_info())
+        
+        return info
     
     def send_verification_email(self, email: str, first_name: str, token: str) -> Dict[str, Any]:
         """Send email verification email."""
