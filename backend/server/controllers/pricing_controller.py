@@ -43,6 +43,7 @@ class PricingController:
             
             options = pricing_service.get_product_options(product_id, store_code)
             
+            result.status = True
             result.data = {
                     'product_id': product_id,
                     'store_code': store_code,
@@ -89,6 +90,7 @@ class PricingController:
                 result.error = "Failed to calculate price"
                 return result
             
+            result.status = True
             result.data = pricing
             
         except Exception as e:
@@ -131,6 +133,7 @@ class PricingController:
             
             logger.info(f"PricingController received estimates: {estimates}")
             
+            result.status = True
             result.data = {
                     'shipping_options': estimates,
                     'count': len(estimates)

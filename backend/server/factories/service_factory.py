@@ -49,14 +49,10 @@ class ServiceFactory:
             )
         return self._pricing_service
     
-    def get_cart_service(self, pricing_service: PricingService) -> CartService:
+    def get_cart_service(self, pricing_service: PricingService, sinalite_adapter: SinaliteAdapter) -> CartService:
         """Get or create cart service instance."""
         if self._cart_service is None:
-            repository_factory = self._get_repository_factory()
-            self._cart_service = CartService(
-                pricing_service, 
-                repository_factory.get_cart_repository()
-            )
+            self._cart_service = CartService(pricing_service, sinalite_adapter)
         return self._cart_service
     
     def get_email_service(self) -> EmailService:

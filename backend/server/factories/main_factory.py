@@ -61,9 +61,9 @@ class MainFactory:
         """Get pricing service instance."""
         return self._get_service_factory().get_pricing_service(sinalite_adapter)
     
-    def get_cart_service(self, pricing_service: PricingService) -> CartService:
+    def get_cart_service(self, pricing_service: PricingService, sinalite_adapter: SinaliteAdapter) -> CartService:
         """Get cart service instance."""
-        return self._get_service_factory().get_cart_service(pricing_service)
+        return self._get_service_factory().get_cart_service(pricing_service, sinalite_adapter)
     
     def get_email_service(self):
         """Get email service instance."""
