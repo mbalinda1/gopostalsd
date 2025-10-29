@@ -185,8 +185,26 @@ export function Checkout() {
     try {
       setProcessingOrder(true);
 
+      // Validate required fields
+      const requiredCustomerFields = ['email', 'first_name', 'last_name'];
+      for (const field of requiredCustomerFields) {
+        if (!checkoutData.customerInfo[field] || checkoutData.customerInfo[field].trim() === '') {
+          throw new Error(`Please fill in your ${field.replace('_', ' ')} before proceeding`);
+        }
+      }
+
+      const requiredAddressFields = ['street', 'city', 'state', 'zip_code', 'country'];
+      for (const field of requiredAddressFields) {
+        if (!checkoutData.shippingAddress[field] || checkoutData.shippingAddress[field].trim() === '') {
+          throw new Error(`Please complete your shipping address (${field})`);
+        }
+      }
+
+      // Get session ID for the cart
+      const sessionId = localStorage.getItem('cart_session_id') || 'default_session';
+      
       // Create order
-      const orderResponse = await api.post('/orders/', {
+      const orderResponse = await api.post(`/orders/?session_id=${sessionId}`, {
         customer_info: checkoutData.customerInfo,
         shipping_address: checkoutData.shippingAddress,
         billing_address: checkoutData.useSameAddress ? 
@@ -211,8 +229,8 @@ export function Checkout() {
         throw new Error(paymentResult.error);
       }
     } catch (error) {
-      console.error('Order processing error:', error);
-      alert('Failed to process order: ' + error.message);
+      const errorMessage = error.response?.data?.error || error.message || 'Failed to process order';
+      alert('Failed to process order: ' + errorMessage);
     } finally {
       setProcessingOrder(false);
     }

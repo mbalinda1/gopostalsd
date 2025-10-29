@@ -67,8 +67,8 @@ class OrderService:
             # Generate order number
             order_number = self._generate_order_number()
             
-            # Calculate totals
-            subtotal = sum(item.total_price for item in cart.items)
+            # Calculate totals (convert to float to avoid Decimal/float mixing)
+            subtotal = sum(float(item.total_price) for item in cart.items)
             shipping_cost = self._get_shipping_cost(cart)
             tax_amount = self._calculate_tax(subtotal, cart.store_code)
             total_amount = subtotal + shipping_cost + tax_amount
@@ -177,18 +177,20 @@ class OrderService:
                 order.payment_status = PaymentStatus.COMPLETED
                 order.status = OrderStatus.PROCESSING
                 
-                # Create payment record
-                payment = Payment(
-                    order_id=order.id,
-                    payment_provider=self.payment_service.provider,
-                    external_payment_id=payment_result['payment_id'],
-                    amount=order.total_amount,
-                    currency=order.currency,
-                    status=PaymentStatus.COMPLETED,
-                    payment_method=payment_data.get('payment_method', 'card'),
-                    provider_response=payment_result
-                )
-                db.session.add(payment)
+                # Create payment record (only if we have a payment_id)
+                payment = None
+                if payment_result.get('payment_id'):
+                    payment = Payment(
+                        order_id=order.id,
+                        payment_provider=self.payment_service.provider,
+                        external_payment_id=payment_result['payment_id'],
+                        amount=order.total_amount,
+                        currency=order.currency,
+                        status=PaymentStatus.COMPLETED,
+                        payment_method=payment_data.get('payment_method', 'card'),
+                        provider_response=payment_result
+                    )
+                    db.session.add(payment)
                 
                 db.session.commit()
                 
@@ -199,35 +201,20 @@ class OrderService:
                 
                 return {
                     'success': True,
-                    'payment': payment.to_dict(),
+                    'payment': payment.to_dict() if payment else {'status': 'completed'},
                     'order': order.to_dict(),
                     'message': 'Payment processed successfully'
                 }
             else:
-                # Payment failed
+                # Payment failed - don't create a payment record if external_payment_id would be None
                 order.payment_status = PaymentStatus.FAILED
-                
-                # Create failed payment record
-                payment = Payment(
-                    order_id=order.id,
-                    payment_provider=self.payment_service.provider,
-                    external_payment_id=None,
-                    amount=order.total_amount,
-                    currency=order.currency,
-                    status=PaymentStatus.FAILED,
-                    failure_reason=payment_result['error'],
-                    provider_response=payment_result
-                )
-                db.session.add(payment)
-                
                 db.session.commit()
                 
                 logger.error(f"Payment failed for order {order.order_number}: {payment_result['error']}")
                 
                 return {
                     'success': False,
-                    'error': payment_result['error'],
-                    'payment': payment.to_dict()
+                    'error': payment_result['error']
                 }
                 
         except Exception as e:
@@ -379,9 +366,10 @@ class OrderService:
             shipping_option = ShippingOption.query.filter_by(cart_id=cart.id).first()
             if shipping_option:
                 return float(shipping_option.price)
-            return 0.0
+            # Default to constant $5 shipping if no option selected
+            return 5.00
         except Exception:
-            return 0.0
+            return 5.00
     
     def _calculate_tax(self, subtotal: float, store_code: int) -> float:
         """Calculate tax amount."""

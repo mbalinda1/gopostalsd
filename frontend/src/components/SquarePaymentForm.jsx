@@ -23,9 +23,24 @@ export function SquarePaymentForm({ amount, onPaymentSuccess, processing = false
   
   const cardRef = useRef(null);
   const paymentsRef = useRef(null);
+  const cardContainerRef = useRef(null);
 
   useEffect(() => {
-    initializeSquare();
+    // Wait for DOM to be ready before initializing
+    const initSquare = () => {
+      const cardContainer = document.getElementById('card-container');
+      if (cardContainer) {
+        initializeSquare();
+      } else {
+        // If container not found, try again after a short delay
+        setTimeout(initSquare, 50);
+      }
+    };
+    
+    // Start initialization after component mounts
+    const initTimer = setTimeout(initSquare, 100);
+    
+    return () => clearTimeout(initTimer);
   }, []);
 
   const initializeSquare = async () => {
@@ -63,23 +78,39 @@ export function SquarePaymentForm({ amount, onPaymentSuccess, processing = false
       }
       
       // Initialize Square payments
-      // For now, using placeholder credentials
-      // TODO: Add actual Square credentials to .env file
-      const applicationId = 'sandbox-sq0idb-your-app-id'; // Placeholder
-      const locationId = 'your-location-id'; // Placeholder
+      // Get credentials from environment variables (VITE_ prefix required for Vite)
+      const applicationId = import.meta.env.VITE_SQUARE_APPLICATION_ID || 'sandbox-sq0idb-your-app-id';
+      const locationId = import.meta.env.VITE_SQUARE_LOCATION_ID || 'your-location-id';
+      
+      // Check if using placeholder values
+      if (applicationId === 'sandbox-sq0idb-your-app-id' || locationId === 'your-location-id') {
+        console.warn('Square credentials not configured. Using placeholder values.');
+      }
       
       paymentsRef.current = window.Square.payments(applicationId, locationId);
 
       // Create card payment method
       cardRef.current = await paymentsRef.current.card();
       
-      // Attach card to container
+      // Check if card container exists before attaching
+      const cardContainer = document.getElementById('card-container');
+      if (!cardContainer) {
+        throw new Error('Card container element not found');
+      }
+      
       await cardRef.current.attach('#card-container');
       setCardLoaded(true);
       setIsLoading(false);
     } catch (error) {
       console.error('Error initializing Square payments:', error);
-      setError('Failed to initialize payment form');
+      
+      // Provide more specific error message
+      if (error.message && error.message.includes('not found')) {
+        setError('Card container not found. Please refresh the page.');
+      } else {
+        setError(`Failed to initialize payment form: ${error.message}`);
+      }
+      
       setIsLoading(false);
     }
   };
@@ -124,17 +155,6 @@ export function SquarePaymentForm({ amount, onPaymentSuccess, processing = false
     }).format(amountInCents / 100);
   };
 
-  if (isLoading) {
-    return (
-      <Box display="flex" flexDirection="column" alignItems="center" py={4}>
-        <CircularProgress size={60} />
-        <Typography variant="h6" sx={{ mt: 2 }}>
-          Loading Payment Form...
-        </Typography>
-      </Box>
-    );
-  }
-
   return (
     <Box>
       <Typography variant="h6" gutterBottom>
@@ -144,6 +164,12 @@ export function SquarePaymentForm({ amount, onPaymentSuccess, processing = false
       {error && (
         <Alert severity="error" sx={{ mb: 3 }}>
           {error}
+        </Alert>
+      )}
+      
+      {isLoading && !error && (
+        <Alert severity="info" sx={{ mb: 3 }}>
+          Initializing payment form...
         </Alert>
       )}
 
@@ -176,6 +202,7 @@ export function SquarePaymentForm({ amount, onPaymentSuccess, processing = false
           
           <Box
             id="card-container"
+            ref={cardContainerRef}
             sx={{
               minHeight: '120px',
               border: '1px solid',
@@ -185,7 +212,7 @@ export function SquarePaymentForm({ amount, onPaymentSuccess, processing = false
               backgroundColor: 'background.paper'
             }}
           >
-            {!cardLoaded && (
+            {!cardLoaded && isLoading && (
               <Box display="flex" justifyContent="center" alignItems="center" height="100%">
                 <CircularProgress size={24} />
                 <Typography variant="body2" sx={{ ml: 1 }}>

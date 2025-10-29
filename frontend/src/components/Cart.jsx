@@ -131,7 +131,7 @@ export function Cart() {
           <Button
             variant="contained"
             size="large"
-            href="/products"
+            href="/shop"
             sx={{ px: 4 }}
             
           >

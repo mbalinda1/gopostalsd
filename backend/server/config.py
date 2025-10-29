@@ -22,15 +22,15 @@ swagger = Api(
     validate=True
 )
 
+# Load .env file FIRST before checking environment
+# This ensures environment variables from .env are available
+load_dotenv()
+
 # Check the current environment, default to 'development'
 ENVIRONMENT = os.getenv('ENVIRONMENT', 'development')
 
 # Configure the logger
 configure_logging(ENVIRONMENT)
-
-# Only load .env in development or testing
-if ENVIRONMENT in ['development', 'testing']:
-    load_dotenv()
 
 class Config:
     # Disable SQLAlchemy event system to improve performance
