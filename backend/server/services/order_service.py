@@ -121,6 +121,12 @@ class OrderService:
             db.session.commit()
             
             logger.info(f"Created order {order_number} with {len(cart.items)} items")
+
+            # Send confirmation email to customer
+            self._send_order_confirmation_email(order)
+
+            # Clear cart contents after successful order creation
+            self._clear_cart(cart)
             
             return {
                 'success': True,
@@ -199,9 +205,6 @@ class OrderService:
                     db.session.add(payment)
                 
                 db.session.commit()
-                
-                # Send confirmation email
-                self._send_order_confirmation_email(order)
                 
                 logger.info(f"Payment processed successfully for order {order.order_number}")
                 
@@ -392,12 +395,160 @@ class OrderService:
     def _send_order_confirmation_email(self, order: Order):
         """Send order confirmation email."""
         try:
-            # This would integrate with the email service
-            # For now, just log the action
-            logger.info(f"Sending confirmation email for order {order.order_number} to {order.customer_email}")
-            
-            # TODO: Implement actual email sending
-            # self.email_service.send_order_confirmation(order)
+            if not self.email_service or not self.email_service.is_configured:
+                logger.info("Email service not configured; skipping order confirmation email")
+                return
+
+            tracking_number = order.tracking_number or "Pending - you'll receive an update once your package ships."
+            shipping_address = order.shipping_address or {}
+            billing_address = order.billing_address or shipping_address
+
+            def format_address(address: Dict[str, Any]) -> str:
+                parts = [
+                    address.get('street'),
+                    address.get('apt'),
+                    f"{address.get('city')}, {address.get('state')} {address.get('zip_code')}",
+                    address.get('country')
+                ]
+                return "\n".join([part for part in parts if part])
+
+            items_lines = []
+            for item in order.items:
+                items_lines.append(f"- {item.quantity} x {item.product_name} (SKU: {item.product_sku or 'N/A'}) - ${float(item.total_price):.2f}")
+            items_text = "\n".join(items_lines) if items_lines else "No items found."
+
+            subject = f"Go Postal SD Order Confirmation - {order.order_number}"
+            text_content = f"""
+Hello {order.customer_first_name},
+
+Thank you for your order with Go Postal SD! Your order has been received and is now being processed.
+
+Order Number: {order.order_number}
+Tracking Number: {tracking_number}
+Order Total: ${float(order.total_amount):.2f} USD
+
+Order Items:
+{items_text}
+
+Shipping Address:
+{format_address(shipping_address)}
+
+Billing Address:
+{format_address(billing_address)}
+
+We will send you another update once your package is on the way.
+
+If you have any questions, simply reply to this email or call us at (619) 237-0374.
+
+Thank you,
+Go Postal SD Team
+            """.strip()
+
+            items_html = "".join([
+                f"<tr><td style=\"padding:6px 12px;border:1px solid #ddd;\">{item.quantity}</td>"
+                f"<td style=\"padding:6px 12px;border:1px solid #ddd;\">{item.product_name}</td>"
+                f"<td style=\"padding:6px 12px;border:1px solid #ddd;\">{item.product_sku or 'N/A'}</td>"
+                f"<td style=\"padding:6px 12px;border:1px solid #ddd;\">${float(item.total_price):.2f}</td></tr>"
+                for item in order.items
+            ])
+
+            html_content = f"""
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Order Confirmation</title>
+    <style>
+      body {{ font-family: Arial, sans-serif; color: #333; }}
+      .container {{ max-width: 640px; margin: 0 auto; padding: 20px; }}
+      .header {{ text-align: center; margin-bottom: 24px; }}
+      .summary {{ background-color: #f5f5f5; padding: 16px; border-radius: 6px; margin-bottom: 24px; }}
+      .summary h2 {{ margin-top: 0; }}
+      table {{ width: 100%; border-collapse: collapse; margin-bottom: 24px; }}
+      th {{ background-color: #1976d2; color: white; padding: 8px 12px; text-align: left; }}
+      td {{ padding: 6px 12px; border: 1px solid #ddd; }}
+      .footer {{ margin-top: 32px; font-size: 14px; color: #666; }}
+      .addresses {{ display: flex; flex-wrap: wrap; gap: 20px; }}
+      .address {{ flex: 1 1 240px; background: #fafafa; padding: 16px; border-radius: 6px; }}
+      .address h3 {{ margin-top: 0; }}
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>Thanks for your order, {order.customer_first_name}!</h1>
+        <p>Your order has been received and is now being processed.</p>
+      </div>
+      <div class="summary">
+        <h2>Order Summary</h2>
+        <p><strong>Order Number:</strong> {order.order_number}<br>
+           <strong>Tracking Number:</strong> {tracking_number}<br>
+           <strong>Total:</strong> ${float(order.total_amount):.2f} USD</p>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Qty</th>
+            <th>Item</th>
+            <th>SKU</th>
+            <th>Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items_html or '<tr><td colspan="4" style="padding:12px; text-align:center;">No items found.</td></tr>'}
+        </tbody>
+      </table>
+      <div class="addresses">
+        <div class="address">
+          <h3>Shipping Address</h3>
+          <p>{format_address(shipping_address).replace('\n', '<br>')}</p>
+        </div>
+        <div class="address">
+          <h3>Billing Address</h3>
+          <p>{format_address(billing_address).replace('\n', '<br>')}</p>
+        </div>
+      </div>
+      <div class="footer">
+        <p>We'll send another update once your package ships. If you have any questions, simply reply to this email or call us at (619) 237-0374.</p>
+        <p>Go Postal SD<br>
+           1501 India St Suite 103<br>
+           San Diego, CA 92101</p>
+      </div>
+    </div>
+  </body>
+</html>
+            """.strip()
+
+            result = self.email_service.send_email(
+                to_email=order.customer_email,
+                subject=subject,
+                text_content=text_content,
+                html_content=html_content
+            )
+
+            if not result.get('success'):
+                logger.error(f"Failed to send order confirmation email: {result.get('error')}")
+            else:
+                logger.info(f"Sent confirmation email for order {order.order_number} to {order.customer_email}")
             
         except Exception as e:
             logger.error(f"Error sending order confirmation email: {str(e)}")
+
+    def _clear_cart(self, cart: Cart):
+        """Remove all items and shipping selections from the cart after checkout."""
+        if not cart:
+            return
+
+        try:
+            CartItem.query.filter_by(cart_id=cart.id).delete()
+            ShippingOption.query.filter_by(cart_id=cart.id).delete()
+
+            # Optionally retain cart record for analytics but mark as updated
+            cart.updated_at = datetime.utcnow()
+
+            db.session.commit()
+
+            logger.info(f"Cleared cart {cart.id} after order completion")
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Error clearing cart {cart.id if cart else 'unknown'}: {str(e)}")
