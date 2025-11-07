@@ -11,6 +11,8 @@ import theme from './theme';
 
 // Import pages
 import AdminPage from './pages/Admin/AdminPage';
+import ProductManagementPage from './pages/Admin/ProductManagementPage';
+import OrderManagementPage from './pages/Admin/OrderManagementPage';
 import ShopPage from './pages/Shop/ShopPage';
 import HomePage from './pages/Home/HomePage';
 import ContactPage from './pages/Contact/ContactPage';
@@ -51,15 +53,35 @@ const App = () => {
               <Route path="/unauthorized" element={<Layout><UnauthorizedPage /></Layout>} />
               
               {/* Protected routes with layout */}
-              <Route 
-                path="/admin" 
+              <Route
+                path="/admin"
                 element={
                   <Layout>
                     <ProtectedRoute requireAuth={true} requireRole="Admin">
                       <AdminPage />
                     </ProtectedRoute>
                   </Layout>
-                } 
+                }
+              />
+              <Route
+                path="/admin/products"
+                element={
+                  <Layout>
+                    <ProtectedRoute requireAuth={true} requireRole="Admin">
+                      <ProductManagementPage />
+                    </ProtectedRoute>
+                  </Layout>
+                }
+              />
+              <Route
+                path="/admin/orders"
+                element={
+                  <Layout>
+                    <ProtectedRoute requireAuth={true} requireRole="Admin">
+                      <OrderManagementPage />
+                    </ProtectedRoute>
+                  </Layout>
+                }
               />
               
               {/* Catch-all route for 404 */}
