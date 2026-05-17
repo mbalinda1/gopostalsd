@@ -44,7 +44,6 @@ const VerifyEmailPage = () => {
         const verify = async () => {
             try {
                 const result = await verifyEmail(token)
-                console.log('Verification result:', result)
                 
                 if (result.success) {
                     setStatus('success')

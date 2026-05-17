@@ -20,16 +20,6 @@ const ProtectedRoute = ({
     const { user, loading, isAuthenticated, isEmailVerified } = useAuth()
     const location = useLocation()
 
-    // Debug logging
-    console.log('ProtectedRoute: Current state', {
-        requireAuth,
-        requireRole,
-        isAuthenticated,
-        user,
-        userRole: user?.role,
-        loading
-    })
-
     // Show loading spinner while checking authentication
     if (loading) {
         return (
@@ -61,11 +51,6 @@ const ProtectedRoute = ({
 
     // Check role requirement
     if (requireRole && user?.role !== requireRole) {
-        console.log('ProtectedRoute: Role check failed', {
-            requireRole,
-            userRole: user?.role,
-            user: user
-        })
         return <Navigate to="/unauthorized" state={{ from: location }} replace />
     }
 

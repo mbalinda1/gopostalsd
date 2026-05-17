@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 # Module load logging
 IS_DEVELOPMENT = os.getenv('ENVIRONMENT', 'development') in ['development', 'testing']
 if IS_DEVELOPMENT:
-    print("[CART_SERVICE] Module loaded")
+    logger.debug("[CART_SERVICE] Module loaded")
 
 
 class CartService:
@@ -102,24 +102,24 @@ class CartService:
             
             # Get product details from our database
             if IS_DEVELOPMENT:
-                print(f"[CART_SERVICE] Looking up product {product_id} in database")
+                logger.debug("[CART_SERVICE] Looking up product %s in database", product_id)
             
             product = PrintProduct.query.filter_by(vendor_product_id=str(product_id)).first()
             
             if not product:
                 logger.error(f"Product {product_id} not found in database (vendor_product_id search)")
                 if IS_DEVELOPMENT:
-                    print(f"[CART_SERVICE] Product not found. Trying to list all products to debug...")
+                    logger.debug("[CART_SERVICE] Product not found. Listing up to 5 products for debugging")
                     all_products = PrintProduct.query.limit(5).all()
                     for p in all_products:
-                        print(f"  - Product: {p.id}, vendor_product_id: {p.vendor_product_id}, name: {p.name}")
+                        logger.debug("  - Product: %s, vendor_product_id: %s, name: %s", p.id, p.vendor_product_id, p.name)
                 return {
                     'success': False,
                     'error': 'Product not found'
                 }
             
             if IS_DEVELOPMENT:
-                print(f"[CART_SERVICE] Found product: {product.name}, SKU: {product.sku}")
+                logger.debug("[CART_SERVICE] Found product: %s, SKU: %s", product.name, product.sku)
             
             product_name = product.name
             product_sku = product.sku
@@ -337,9 +337,21 @@ class CartService:
             total = subtotal + shipping_cost + tax_amount
             
             if IS_DEVELOPMENT:
-                print(f"[CART_SERVICE] Cart totals: subtotal={subtotal}, shipping={shipping_cost}, tax={tax_amount}, total={total}")
+                logger.debug(
+                    "[CART_SERVICE] Cart totals: subtotal=%s, shipping=%s, tax=%s, total=%s",
+                    subtotal,
+                    shipping_cost,
+                    tax_amount,
+                    total,
+                )
                 for item in cart.items:
-                    print(f"[CART_SERVICE] Item: {item.product_name}, unit_price={item.unit_price}, total_price={item.total_price}, qty={item.quantity}")
+                    logger.debug(
+                        "[CART_SERVICE] Item: %s, unit_price=%s, total_price=%s, qty=%s",
+                        item.product_name,
+                        item.unit_price,
+                        item.total_price,
+                        item.quantity,
+                    )
             
             cart_data = cart.to_dict()
             cart_data.update({

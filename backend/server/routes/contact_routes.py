@@ -2,6 +2,9 @@ from flask_restx import Namespace, Resource, fields
 from flask import request
 from server.services.email_service import EmailService
 from server.factories.main_factory import MainFactory
+import logging
+# Module logger
+logger = logging.getLogger(__name__)
 
 # Create namespace
 api = Namespace('contact', description='Contact form operations')
@@ -51,5 +54,5 @@ class ContactResource(Resource):
                 return {'message': 'Failed to send contact email'}, 500
                 
         except Exception as e:
-            print(f"Error in contact form submission: {str(e)}")
+            logger.error("Error in contact form submission: %s", str(e), exc_info=True)
             return {'message': 'Internal server error'}, 500

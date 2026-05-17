@@ -439,9 +439,7 @@ const ProductDetailPage = ({ product, onBack }) => {
         }
       };
 
-      console.log('Shipping estimate request data:', requestData);
       const estimates = await getShippingEstimates(requestData);
-      console.log('Shipping estimate response:', estimates);
       setShippingEstimates(estimates);
       setShowShippingDialog(true);
     } catch (error) {

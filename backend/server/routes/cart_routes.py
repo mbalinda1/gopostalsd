@@ -12,26 +12,9 @@ from server.services.pricing_service import PricingService
 from server.thirdparty.sinalite import SinaliteAdapter
 from server.factories.main_factory import MainFactory
 from server.middleware.auth_middleware import require_auth, require_cart_auth, get_user_id
-import os
 import logging
 
-# Check if we're in development mode
-IS_DEVELOPMENT = os.getenv('ENVIRONMENT', 'development') in ['development', 'testing']
-
 logger = logging.getLogger(__name__)
-
-def log_api_request(method, path, data=None, headers=None):
-    if IS_DEVELOPMENT:
-        print(f"🌐 API Request: {method} {path}")
-        if data:
-            print(f"   Data: {data}")
-
-def log_api_response(path, status_code, data=None):
-    if IS_DEVELOPMENT:
-        emoji = "✅" if 200 <= status_code < 300 else "❌" if status_code >= 400 else "⚠️"
-        print(f"{emoji} API Response: {status_code} {path}")
-        if data:
-            print(f"   Data: {data}")
 
 # Create namespace for cart operations
 api = Namespace('cart', description='Cart operations')

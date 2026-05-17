@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 # Module load logging
 IS_DEVELOPMENT = os.getenv('ENVIRONMENT', 'development') in ['development', 'testing']
 if IS_DEVELOPMENT:
-    print("[AUTH_MIDDLEWARE] Module loaded")
+    logger.debug("[AUTH_MIDDLEWARE] Module loaded")
 
 
 def require_cart_auth(f):
@@ -26,11 +26,6 @@ def require_cart_auth(f):
     """
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if IS_DEVELOPMENT:
-            print(f"[CART AUTH] Decorator called for {f.__name__}")
-            print(f"[CART AUTH] Request method: {request.method}")
-            print(f"[CART AUTH] Request path: {request.path}")
-        
         logger.debug(f"Cart auth check for {request.method} {request.path}")
         
         try:
@@ -50,7 +45,7 @@ def require_cart_auth(f):
                 session_token = request.args.get('session_id')
             
             if IS_DEVELOPMENT:
-                print(f"[CART AUTH] Session token found: {session_token is not None}")
+                logger.debug("[CART AUTH] Session token found: %s", session_token is not None)
             
             # For cart operations, if we have a session token, try to verify it
             # If it fails, we'll just proceed without user context (guest cart)
@@ -62,30 +57,20 @@ def require_cart_auth(f):
                         user = auth_service.get_user_by_session(session_token)
                         if user:
                             if IS_DEVELOPMENT:
-                                print(f"[CART AUTH] User authenticated: {user.email}")
+                                logger.debug("[CART AUTH] User authenticated: %s", user.email)
                             logger.debug(f"Authenticated user for cart: {user.email}")
                             # Set user context for authenticated users
                             g.current_user = user
                             request.user_id = user.id
                         else:
-                            if IS_DEVELOPMENT:
-                                print(f"[CART AUTH] No user found for session")
                             logger.debug("No user found for cart session token")
                 except Exception as e:
-                    if IS_DEVELOPMENT:
-                        print(f"[CART AUTH] Exception in auth: {str(e)}")
-                    logger.debug(f"Could not verify cart session: {str(e)}")
+                    logger.debug(f"Could not verify cart session: {str(e)}", exc_info=True)
                     # Continue without user context
-            
-            if IS_DEVELOPMENT:
-                print(f"[CART AUTH] Proceeding to route handler...")
             
             return f(*args, **kwargs)
         except Exception as e:
-            if IS_DEVELOPMENT:
-                print(f"[CART AUTH] FATAL ERROR in decorator: {str(e)}")
-                import traceback
-                traceback.print_exc()
+            logger.exception("Cart auth decorator encountered an error: %s", str(e))
             raise
     
     return decorated_function
