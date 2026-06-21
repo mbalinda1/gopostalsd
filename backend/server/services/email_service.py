@@ -15,11 +15,19 @@ class EmailService:
         self.provider = None
         # Get frontend URL from environment, with better defaults
         self.base_url = self._get_frontend_url()
+        # Backend URL is used for actions that must always resolve even when
+        # frontend route rewrites are unavailable.
+        self.backend_url = self._get_backend_url()
     
     def _get_frontend_url(self) -> str:
         """Get the frontend URL with proper environment detection."""
+        # Prefer an explicit Render frontend URL when present because it is
+        # guaranteed to be routable even if a custom domain is misconfigured.
+        render_frontend_url = os.getenv('RENDER_FRONTEND_URL')
+        if render_frontend_url:
+            return render_frontend_url.rstrip('/')
+
         frontend_url = os.getenv('FRONTEND_URL')
-        
         if frontend_url:
             # Remove trailing slash to avoid double slashes in URLs
             return frontend_url.rstrip('/')
@@ -30,12 +38,27 @@ class EmailService:
         if environment == 'production':
             # Production should always have FRONTEND_URL set
             logger.warning("FRONTEND_URL not set in production environment!")
-            return 'https://gopostalsd.com'  # Fallback for production
+            return 'https://gopostalsd-website.onrender.com'  # Safe fallback for production
         elif environment == 'staging':
             return 'https://staging.gopostalsd.com'
         else:
             # Development environment
             return 'http://localhost:3000'
+
+    def _get_backend_url(self) -> str:
+        """Get the backend public URL with sensible environment fallbacks."""
+        render_external_url = os.getenv('RENDER_EXTERNAL_URL')
+        if render_external_url:
+            return render_external_url.rstrip('/')
+
+        backend_url = os.getenv('BACKEND_URL')
+        if backend_url:
+            return backend_url.rstrip('/')
+
+        environment = os.getenv('ENVIRONMENT', 'development').lower()
+        if environment == 'production':
+            return 'https://gopostalsd.onrender.com'
+        return 'http://localhost:5000'
     
     def init_app(self, app: Flask, provider: Optional[str] = None):
         """
@@ -132,8 +155,10 @@ class EmailService:
     def send_verification_email(self, email: str, first_name: str, token: str, reply_to: str = None) -> Dict[str, Any]:
         """Send email verification email."""
         subject = "Verify Your Email - Go Postal SD"
-        
-        verification_url = f"{self.base_url}/verify?token={token}"
+
+        # Use backend verification endpoint so email verification still works
+        # even if frontend route rewrites/custom domains are misconfigured.
+        verification_url = f"{self.backend_url}/api/auth/verify-email?token={token}"
         
         text_content = f"""
                 Hello {first_name},
