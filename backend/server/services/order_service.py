@@ -9,6 +9,7 @@ import logging
 import uuid
 from typing import Dict, Any, Optional
 from datetime import datetime
+from sqlalchemy.exc import ProgrammingError
 from server.config import database as db
 from server.models.pricing import Cart, CartItem, ShippingOption
 from server.models.order import Order, OrderItem, Payment, OrderStatus, PaymentStatus
@@ -301,6 +302,15 @@ class OrderService:
             }
             
         except Exception as e:
+            if isinstance(e, ProgrammingError) and 'relation "orders" does not exist' in str(e):
+                logger.warning("Orders table missing while fetching user orders; returning empty list")
+                return {
+                    'success': True,
+                    'orders': [],
+                    'total_count': 0,
+                    'limit': limit,
+                    'offset': offset,
+                }
             logger.error(f"Error getting user orders: {str(e)}")
             return {
                 'success': False,
