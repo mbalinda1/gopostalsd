@@ -90,7 +90,21 @@ class AuthService {
             // Store authentication data
             this.setToken(session.session_token)
             this.setRefreshToken(session.refresh_token)
-            this.setUser(user)
+
+            // Hydrate full user profile (addresses, status, etc.) after login.
+            // The login payload intentionally returns a minimal user object.
+            let hydratedUser = user
+            try {
+                const currentUser = await this.getCurrentUser()
+                if (currentUser) {
+                    hydratedUser = currentUser
+                }
+            } catch (profileError) {
+                console.warn('Unable to hydrate current user profile after login:', profileError)
+            }
+
+            this.setUser(hydratedUser)
+            response.data.user = hydratedUser
             
             return response.data
         } catch (error) {
