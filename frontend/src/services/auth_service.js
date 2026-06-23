@@ -90,9 +90,25 @@ class AuthService {
             // Store authentication data
             this.setToken(session.session_token)
             this.setRefreshToken(session.refresh_token)
-            this.setUser(user)
+
+            // Hydrate full user profile so address-dependent flows work immediately.
+            // Login response can be minimal; /auth/me includes shipping/billing addresses.
+            let hydratedUser = user
+            try {
+                const currentUser = await this.getCurrentUser()
+                if (currentUser) {
+                    hydratedUser = currentUser
+                }
+            } catch (hydrateError) {
+                console.warn('Unable to hydrate user profile after login, using login payload:', hydrateError)
+            }
+
+            this.setUser(hydratedUser)
             
-            return response.data
+            return {
+                ...response.data,
+                user: hydratedUser
+            }
         } catch (error) {
             // Check if it's an email verification error
             if (error.response?.data?.code === 'EMAIL_NOT_VERIFIED') {
