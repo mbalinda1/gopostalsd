@@ -246,7 +246,7 @@ export function useCartFormatting() {
   // Get cart summary text
   const getCartSummaryText = () => {
     const itemCount = cart.items?.length || 0;
-    const totalItems = cart.items?.reduce((total, item) => total + item.quantity, 0) || 0;
+    const totalItems = cart.items?.reduce((total, item) => total + toSafeNumber(item.quantity), 0) || 0;
     
     if (itemCount === 0) {
       return 'Your cart is empty';
