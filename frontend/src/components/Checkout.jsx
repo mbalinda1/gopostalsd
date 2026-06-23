@@ -258,7 +258,7 @@ export function Checkout() {
       case 2:
         return (
           <PaymentStep
-            cart={cart}
+            amountCents={Math.round((Number(cartStats.total) || 0) * 100)}
             checkoutData={checkoutData}
             onCreateOrder={handleCreateOrder}
             processing={processingOrder}
@@ -561,7 +561,7 @@ function ShippingBillingStep({ checkoutData, onInputChange, onSameAddressChange,
   );
 }
 
-function PaymentStep({ cart, checkoutData, onCreateOrder, processing }) {
+function PaymentStep({ amountCents, checkoutData, onCreateOrder, processing }) {
   return (
     <Box>
       <Typography variant="h6" gutterBottom>
@@ -569,7 +569,7 @@ function PaymentStep({ cart, checkoutData, onCreateOrder, processing }) {
       </Typography>
       
       <SquarePaymentForm
-        amount={cart.total * 100} // Convert to cents
+        amount={amountCents}
         onPaymentSuccess={onCreateOrder}
         processing={processing}
       />
