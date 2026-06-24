@@ -17,7 +17,7 @@ from flask import current_app
 from server import database as db
 from server.models.pricing import (
     ProductOption, ProductPricing, 
-    ShippingOption, ProductVariant, StoreCode
+    ShippingOption, ProductVariant, StoreCode, PricingPolicy
 )
 from server.thirdparty.sinalite import SinaliteAdapter
 from server.exceptions.pricing_exceptions import (
@@ -61,23 +61,24 @@ class SinalitePricingStrategy(PricingStrategy):
         return value.quantize(Decimal('0.01'))
 
     def _get_pricing_policy(self) -> Dict[str, Any]:
-        margin_percent = float(current_app.config.get('PRICING_MARKUP_PERCENT', 30))
+        policy_record = PricingPolicy.get_current()
+        margin_percent = float(policy_record.markup_percent if policy_record else current_app.config.get('PRICING_MARKUP_PERCENT', 30))
         margin_ratio = max(0.0, min(margin_percent / 100, 0.95))
         return {
             'version': current_app.config.get('PRICING_POLICY_VERSION', 'retail-v1'),
-            'vendor_currency': current_app.config.get('PRICING_VENDOR_CURRENCY', 'CAD'),
-            'display_currency': current_app.config.get('PRICING_DISPLAY_CURRENCY', 'USD'),
-            'cad_to_usd_rate': self._to_decimal(current_app.config.get('PRICING_CAD_TO_USD_RATE', 0.74)),
-            'exchange_buffer_percent': self._to_decimal(current_app.config.get('PRICING_EXCHANGE_BUFFER_PERCENT', 5)),
+            'vendor_currency': policy_record.vendor_currency if policy_record else current_app.config.get('PRICING_VENDOR_CURRENCY', 'CAD'),
+            'display_currency': policy_record.display_currency if policy_record else current_app.config.get('PRICING_DISPLAY_CURRENCY', 'USD'),
+            'cad_to_usd_rate': self._to_decimal(policy_record.cad_to_usd_rate if policy_record else current_app.config.get('PRICING_CAD_TO_USD_RATE', 0.74)),
+            'exchange_buffer_percent': self._to_decimal(policy_record.exchange_buffer_percent if policy_record else current_app.config.get('PRICING_EXCHANGE_BUFFER_PERCENT', 5)),
             'markup_percent': self._to_decimal(margin_percent),
             'markup_ratio': Decimal(str(margin_ratio)),
-            'fixed_fee_usd': self._to_decimal(current_app.config.get('PRICING_FIXED_FEE_USD', 0)),
-            'minimum_profit_usd': self._to_decimal(current_app.config.get('PRICING_MINIMUM_PROFIT_USD', 0)),
-            'rounding_increment': self._to_decimal(current_app.config.get('PRICING_ROUNDING_INCREMENT', '0.05')),
+            'fixed_fee_usd': self._to_decimal(policy_record.fixed_fee_usd if policy_record else current_app.config.get('PRICING_FIXED_FEE_USD', 0)),
+            'minimum_profit_usd': self._to_decimal(policy_record.minimum_profit_usd if policy_record else current_app.config.get('PRICING_MINIMUM_PROFIT_USD', 0)),
+            'rounding_increment': self._to_decimal(policy_record.rounding_increment if policy_record else current_app.config.get('PRICING_ROUNDING_INCREMENT', '0.05')),
             'customization_fees': {
                 'none': Decimal('0'),
-                'file_review': self._to_decimal(current_app.config.get('CUSTOMIZATION_FILE_REVIEW_FEE_USD', 10)),
-                'design_assist': self._to_decimal(current_app.config.get('CUSTOMIZATION_DESIGN_ASSIST_FEE_USD', 35)),
+                'file_review': self._to_decimal(policy_record.customization_file_review_fee_usd if policy_record else current_app.config.get('CUSTOMIZATION_FILE_REVIEW_FEE_USD', 10)),
+                'design_assist': self._to_decimal(policy_record.customization_design_assist_fee_usd if policy_record else current_app.config.get('CUSTOMIZATION_DESIGN_ASSIST_FEE_USD', 35)),
             },
         }
 
