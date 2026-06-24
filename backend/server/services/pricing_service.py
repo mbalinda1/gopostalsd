@@ -103,6 +103,10 @@ class SinalitePricingStrategy(PricingStrategy):
         customization_key = self._normalize_customization(customization).get('serviceLevel', 'none')
         return f"{policy_version}:{customization_key}:{'-'.join(map(str, sorted(options)))}"
 
+    @staticmethod
+    def _build_vendor_option_key(options: List[int]) -> str:
+        return "-".join(map(str, sorted(options)))
+
     def _apply_retail_pricing(self, vendor_price: Any, options: List[int], package_info: Optional[Dict] = None, customization: Optional[Dict] = None) -> Dict:
         policy = self._get_pricing_policy()
         customization = self._normalize_customization(customization)
@@ -188,6 +192,7 @@ class SinalitePricingStrategy(PricingStrategy):
             # Create option key for caching (sorted for consistency)
             customization = self._normalize_customization(customization)
             option_key = self._build_option_key(options, customization)
+            vendor_option_key = self._build_vendor_option_key(options)
             
             # Check cache first
             cached_pricing = self.repository.get_cached_pricing(product_id, store_code, option_key)
@@ -201,9 +206,9 @@ class SinalitePricingStrategy(PricingStrategy):
                 )
             
             # Use key-based pricing from Sinalite API
-            pricing_data = self.sinalite.get_price_by_key(product_id, option_key)
+            pricing_data = self.sinalite.get_price_by_key(product_id, vendor_option_key)
             if not pricing_data:
-                logger.error(f"Failed to get pricing for product {product_id} with key {option_key}")
+                logger.error(f"Failed to get pricing for product {product_id} with key {vendor_option_key}")
                 return None
             
             # Handle the response format - Sinalite returns a list with price dict
